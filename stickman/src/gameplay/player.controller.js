@@ -114,7 +114,7 @@ export class PlayerController {
     this.meleeCooldown = 0;
     this.invulnerable = 0;
     this.stickman.position.set(spawn.x, this.stickman.userData.stickman.dimensions.pelvisY, spawn.z);
-    this.stickman.rotation.set(0, this.yaw, 0);
+    this.stickman.rotation.set(0, Math.PI - this.yaw, 0);
     this.#updateCamera(1);
   }
 
@@ -242,7 +242,7 @@ export class PlayerController {
     }
 
     const speed = Math.hypot(this.moveVelocity.x, this.moveVelocity.z);
-    const targetFacing = this.yaw;
+    const targetFacing = Math.PI - this.yaw;
     const current = this.stickman.rotation.y;
     const angle = Math.atan2(Math.sin(targetFacing - current), Math.cos(targetFacing - current));
     this.stickman.rotation.y += angle * (1 - Math.exp(-dt * 13));

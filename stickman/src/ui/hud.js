@@ -1,8 +1,8 @@
 // File: stickman/src/ui/hud.js
-// Role: Updates hero health, energy, weapon label, aura label, toast, and pause/intro overlays.
-// Scope: DOM presentation only; it never moves the character, animates joints, or creates Three.js objects.
-// Rule: Character, input, weapon, aura, and level systems send their state into this UI module.
-// Goal: Keep the hero-only test scene clear while enemies and wave UI remain completely absent.
+// Role: Updates character-test health, energy, weapon, element badge, toast, and start/pause overlay text.
+// Scope: DOM presentation only; it never moves the player, builds weapons, animates joints, or creates level objects.
+// Rule: Enemy wave, score, and enemy-count UI are intentionally absent while the hero-design phase is active.
+// Goal: Keep the screen focused on judging 2D character motion, jump feel, weapon switching, and elemental style.
 
 export class GameHUD {
   constructor() {
@@ -32,14 +32,14 @@ export class GameHUD {
 
   setWeapon(weapon) {
     const gun = weapon === 'gun';
-    this.weaponText.textContent = gun ? 'GUN' : 'SWORD';
-    this.toast(gun ? 'تفنگ انتخاب شد' : 'شمشیر انتخاب شد');
+    this.weaponText.textContent = gun ? '2 · GUN' : '1 · SWORD';
+    this.toast(gun ? 'تفنگ' : 'شمشیر');
   }
 
   setAura(mode) {
     const fire = mode === 'fire';
     this.auraBadge.textContent = fire ? '🔥 FIRE' : '❄ ICE';
-    this.auraBadge.style.color = fire ? '#ffd1a6' : '#d8f7ff';
+    this.auraBadge.style.color = fire ? '#ffe0bd' : '#d8f7ff';
     this.toast(fire ? 'حالت آتشی' : 'حالت یخی');
   }
 
@@ -49,7 +49,7 @@ export class GameHUD {
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => {
       this.toastNode.style.opacity = '0';
-    }, 900);
+    }, 800);
   }
 
   hideOverlay() {
@@ -59,16 +59,16 @@ export class GameHUD {
   showPause() {
     this.overlay.classList.add('show');
     this.title.textContent = 'PAUSED';
-    this.description.textContent = 'تست کاراکتر متوقف شده. برای ادامه دوباره وارد کنترل ماوس شو.';
+    this.description.textContent = 'تست کاراکتر متوقف شده. برای ادامه روی دکمه بزن.';
     this.startButton.textContent = 'ادامه';
-    this.small.textContent = 'ESC ماوس را آزاد می‌کند.';
+    this.small.textContent = 'در حالت ۲.۵ بعدی ماوس قفل نمی‌شود.';
   }
 
   showIntro() {
     this.overlay.classList.add('show');
-    this.title.textContent = 'STICK // HERO';
-    this.description.textContent = 'فقط کاراکتر اصلی فعال است: ریگ مفصلی مخفی، بدن یکپارچه، حرکت کامل و دو سلاح قابل تعویض.';
-    this.startButton.textContent = 'شروع تست کاراکتر';
-    this.small.textContent = '1 شمشیر، 2 تفنگ، اسکرول برای تغییر سلاح. دشمن‌ها فعلاً غیرفعال‌اند.';
+    this.title.textContent = 'STICK // 2.5D';
+    this.description.textContent = 'فقط کاراکتر اصلی فعال است: شخصیت دوبعدی، محیط سه‌بعدی، حرکت از بغل و ریگ مفصلی کاملاً مخفی.';
+    this.startButton.textContent = 'تست کاراکتر';
+    this.small.textContent = 'A/D حرکت · W یا Space پرش · 1/2 یا اسکرول تعویض سلاح';
   }
 }

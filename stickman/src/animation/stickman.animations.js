@@ -1,13 +1,14 @@
 // File: stickman/src/animation/stickman.animations.js
-// Role: Drives the hidden rig for idle, walk, run, jump, sword, gun, recoil, and head-look motion.
-// Scope: Joint rotations and subtle body motion only; world movement and weapon mesh creation stay elsewhere.
-// Rule: No visible joint geometry is created here; all articulation happens through invisible transform pivots.
-// Goal: Keep arms detached from the torso silhouette while every limb bends smoothly and naturally.
+// Role: Drives the hidden 2D rig for idle, walk, run, jump, fall, landing, sword, gun, and aim motion.
+// Scope: Invisible joint rotations, body bob, squash, and pose blending only; world movement stays in the controller.
+// Rule: No visible joint geometry is ever created; the flat body pieces overlap while pivots animate underneath.
+// Goal: Replace the robotic 3D gait with a readable side-view walk cycle and much softer jump transitions.
 
 import * as THREE from 'three';
 
 const damp = THREE.MathUtils.damp;
 const clamp = THREE.MathUtils.clamp;
+const lerp = THREE.MathUtils.lerp;
 
 export class StickmanAnimator {
   constructor(stickman) {
@@ -16,17 +17,23 @@ export class StickmanAnimator {
     this.mode = 'idle';
     this.weapon = 'sword';
     this.time = 0;
+    this.speed = 0;
     this.moveAmount = 0;
+    this.verticalVelocity = 0;
     this.actionTimer = 0;
     this.actionDuration = 0.42;
-    this.lookPitch = 0;
+    this.landingTimer = 0;
+    this.aimAngle = 0;
   }
 
   setMotion({ speed = 0, grounded = true, sprinting = false, verticalVelocity = 0 }) {
-    this.moveAmount = clamp(speed / 7.5, 0, 1);
-    if (!grounded) this.mode = verticalVelocity > 0.25 ? 'jump' : 'fall';
-    else if (speed > 5.3 && sprinting) this.mode = 'run';
-    else if (speed > 0.25) this.mode = 'walk';
+    this.speed = speed;
+    this.moveAmount = clamp(speed / 7.4, 0, 1);
+    this.verticalVelocity = verticalVelocity;
+
+    if (!grounded) this.mode = verticalVelocity > 0.35 ? 'jump' : 'fall';
+    else if (speed > 5.1 && sprinting) this.mode = 'run';
+    else if (speed > 0.18) this.mode = 'walk';
     else this.mode = 'idle';
   }
 
@@ -34,143 +41,172 @@ export class StickmanAnimator {
     if (weapon === 'sword' || weapon === 'gun') this.weapon = weapon;
   }
 
-  setLookPitch(pitch) {
-    this.lookPitch = clamp(pitch, -0.55, 0.32);
+  setAim(angle) {
+    this.aimAngle = clamp(angle, -0.72, 0.78);
   }
 
   triggerPrimary(weapon = this.weapon) {
     this.weapon = weapon;
-    this.actionDuration = weapon === 'gun' ? 0.13 : 0.44;
+    this.actionDuration = weapon === 'gun' ? 0.12 : 0.38;
     this.actionTimer = this.actionDuration;
+  }
+
+  notifyLand(impact = 1) {
+    this.landingTimer = clamp(0.10 + impact * 0.018, 0.10, 0.18);
   }
 
   update(delta) {
     const dt = Math.min(delta, 0.05);
     this.time += dt;
     this.actionTimer = Math.max(0, this.actionTimer - dt);
+    this.landingTimer = Math.max(0, this.landingTimer - dt);
 
     const j = this.rig.joints;
-    const phaseSpeed = this.mode === 'run' ? 10.2 : 7.1;
-    const phase = this.time * phaseSpeed;
-    const strideScale = this.mode === 'run' ? 0.86 : 0.58;
-    const stride = Math.sin(phase) * strideScale * Math.max(0.12, this.moveAmount);
-    const kneeL = Math.max(0, -Math.sin(phase + 0.25));
-    const kneeR = Math.max(0, Math.sin(phase + 0.25));
+    const running = this.mode === 'run';
+    const moving = this.mode === 'walk' || running;
+    const cadence = running ? 11.2 : 7.6;
+    const phase = this.time * cadence;
+    const stride = Math.sin(phase);
+    const liftFront = Math.max(0, Math.cos(phase));
+    const liftBack = Math.max(0, -Math.cos(phase));
 
-    const target = {
-      luaX: 0, ruaX: 0,
-      llaX: -0.08, rlaX: -0.08,
-      lulX: 0, rulX: 0,
-      lllX: 0, rllX: 0,
-      luaZ: 0.20, ruaZ: -0.20,
-      llaZ: 0, rlaZ: 0,
-      torsoX: 0, torsoZ: 0,
-      headX: this.lookPitch * 0.33,
-      headZ: 0
+    const t = {
+      lHip: 0,
+      rHip: 0,
+      lKnee: 0,
+      rKnee: 0,
+      lAnkle: 0,
+      rAnkle: 0,
+      lShoulder: 0.05,
+      rShoulder: -0.02,
+      lElbow: -0.10,
+      rElbow: -0.12,
+      torso: 0,
+      head: 0,
+      bob: 0,
+      scaleY: 1,
+      scaleX: 1
     };
 
-    if (this.mode === 'walk' || this.mode === 'run') {
-      const legStride = stride;
-      const armSwing = this.mode === 'run' ? 0.62 : 0.42;
-      const knee = this.mode === 'run' ? 0.90 : 0.70;
+    if (moving) {
+      const hipSwing = (running ? 0.78 : 0.56) * this.moveAmount;
+      const armSwing = (running ? 0.68 : 0.46) * this.moveAmount;
+      const kneeBend = running ? 0.92 : 0.68;
 
-      target.lulX = legStride;
-      target.rulX = -legStride;
-      target.lllX = -kneeL * knee;
-      target.rllX = -kneeR * knee;
-      target.torsoX = this.mode === 'run' ? 0.09 : 0.025;
-      target.torsoZ = Math.sin(phase) * 0.022;
-      target.headZ = -target.torsoZ * 0.45;
+      t.rHip = stride * hipSwing;
+      t.lHip = -stride * hipSwing;
+      t.rKnee = -liftBack * kneeBend;
+      t.lKnee = -liftFront * kneeBend;
+      t.rAnkle = -t.rHip * 0.28 + liftBack * 0.14;
+      t.lAnkle = -t.lHip * 0.28 + liftFront * 0.14;
 
-      if (this.weapon === 'sword') {
-        target.luaX = -stride * armSwing;
-        target.ruaX = -0.26 + stride * 0.10;
-        target.llaX = -0.16;
-        target.rlaX = -0.28;
-      }
+      t.rShoulder = -stride * armSwing * 0.72;
+      t.lShoulder = stride * armSwing;
+      t.rElbow = -0.16 - Math.max(0, stride) * 0.16;
+      t.lElbow = -0.14 - Math.max(0, -stride) * 0.14;
+
+      t.torso = -stride * (running ? 0.032 : 0.022);
+      t.head = -t.torso * 0.55;
+      t.bob = Math.abs(Math.cos(phase)) * (running ? 0.055 : 0.032);
     } else if (this.mode === 'jump') {
-      target.luaX = -0.32;
-      target.ruaX = this.weapon === 'sword' ? -0.42 : target.ruaX;
-      target.lulX = 0.32;
-      target.rulX = -0.20;
-      target.lllX = -0.55;
-      target.rllX = -0.27;
-      target.torsoX = -0.04;
+      const rise = clamp(this.verticalVelocity / 7.5, 0, 1);
+      t.rHip = 0.34 + rise * 0.08;
+      t.lHip = -0.22;
+      t.rKnee = -0.66;
+      t.lKnee = -0.42;
+      t.rShoulder = 0.28;
+      t.lShoulder = -0.22;
+      t.rElbow = -0.28;
+      t.lElbow = -0.22;
+      t.torso = -0.045;
+      t.bob = 0.018;
     } else if (this.mode === 'fall') {
-      target.luaX = 0.26;
-      target.ruaX = this.weapon === 'sword' ? -0.12 : target.ruaX;
-      target.lulX = -0.20;
-      target.rulX = 0.28;
-      target.lllX = -0.30;
-      target.rllX = -0.40;
-      target.torsoX = 0.055;
+      const fall = clamp(-this.verticalVelocity / 9, 0, 1);
+      t.rHip = -0.16;
+      t.lHip = 0.23;
+      t.rKnee = -0.38 - fall * 0.12;
+      t.lKnee = -0.52;
+      t.rShoulder = -0.18;
+      t.lShoulder = 0.24;
+      t.rElbow = -0.22;
+      t.lElbow = -0.20;
+      t.torso = 0.035;
     } else {
-      const breathe = Math.sin(this.time * 1.4) * 0.022;
-      target.luaX = breathe;
-      target.ruaX = -breathe;
-      target.torsoZ = Math.sin(this.time * 0.82) * 0.010;
-      target.headZ = -target.torsoZ * 0.65;
+      const breathe = Math.sin(this.time * 1.7);
+      t.rShoulder = -0.025 + breathe * 0.015;
+      t.lShoulder = 0.045 - breathe * 0.012;
+      t.rElbow = -0.12;
+      t.lElbow = -0.10;
+      t.torso = Math.sin(this.time * 0.72) * 0.008;
+      t.head = -t.torso * 0.75;
+      t.bob = Math.sin(this.time * 1.7) * 0.006;
     }
 
     if (this.weapon === 'gun') {
-      // Two-hand gun pose: both shoulders stay off the torso, elbows bend through hidden joints.
-      const bob = (this.mode === 'walk' || this.mode === 'run') ? Math.sin(phase) * 0.035 : 0;
-      target.ruaX = -1.02 + bob;
-      target.rlaX = -0.46;
-      target.ruaZ = -0.26;
-      target.rlaZ = -0.08;
-
-      target.luaX = -0.90 - bob * 0.7;
-      target.llaX = -0.72;
-      target.luaZ = 0.32;
-      target.llaZ = 0.10;
-      target.torsoX += 0.025;
+      const aim = this.aimAngle;
+      t.rShoulder = 1.16 + aim * 0.62;
+      t.rElbow = -0.48 + aim * 0.18;
+      t.lShoulder = 0.92 + aim * 0.52;
+      t.lElbow = -0.82 + aim * 0.16;
+      t.torso += -aim * 0.035;
+      t.head += aim * 0.09;
     } else {
-      // Sword-ready pose keeps the weapon arm separate from the ribs and the free arm relaxed.
-      target.ruaX += -0.24;
-      target.rlaX = Math.min(target.rlaX, -0.28);
-      target.ruaZ = -0.24;
-      target.luaZ = 0.20;
+      t.rShoulder += 0.18;
+      t.rElbow = Math.min(t.rElbow, -0.24);
     }
 
     if (this.actionTimer > 0) {
       const p = 1 - this.actionTimer / this.actionDuration;
-      const pulse = Math.sin(p * Math.PI);
-
       if (this.weapon === 'gun') {
-        target.ruaX += 0.16 * pulse;
-        target.rlaX += 0.10 * pulse;
-        target.luaX += 0.08 * pulse;
-        target.torsoX -= 0.025 * pulse;
+        const recoil = Math.sin(p * Math.PI);
+        t.rShoulder -= recoil * 0.14;
+        t.lShoulder -= recoil * 0.07;
+        t.torso += recoil * 0.025;
       } else {
-        const wind = Math.sin(Math.min(1, p * 1.25) * Math.PI);
-        target.ruaX = -0.58 - 0.58 * pulse;
-        target.rlaX = -0.54 - 0.28 * pulse;
-        target.ruaZ = -0.24 + 1.18 * (p - 0.5);
-        target.rlaZ = 0.34 * wind;
-        target.torsoZ = -0.16 * pulse;
-        target.headZ += 0.06 * pulse;
+        const windup = p < 0.28 ? p / 0.28 : 1;
+        const swing = p < 0.28 ? 0 : (p - 0.28) / 0.72;
+        t.rShoulder = p < 0.28
+          ? lerp(0.35, 1.95, windup)
+          : lerp(1.95, -0.72, swing);
+        t.rElbow = p < 0.28
+          ? lerp(-0.30, -0.78, windup)
+          : lerp(-0.78, -0.18, swing);
+        t.torso = p < 0.28 ? -0.08 * windup : lerp(-0.08, 0.10, swing);
+        t.head = -t.torso * 0.45;
       }
     }
 
-    const k = this.mode === 'run' ? 18 : 13;
-    j.leftUpperArm.rotation.x = damp(j.leftUpperArm.rotation.x, target.luaX, k, dt);
-    j.rightUpperArm.rotation.x = damp(j.rightUpperArm.rotation.x, target.ruaX, k, dt);
-    j.leftLowerArm.rotation.x = damp(j.leftLowerArm.rotation.x, target.llaX, k, dt);
-    j.rightLowerArm.rotation.x = damp(j.rightLowerArm.rotation.x, target.rlaX, k, dt);
-    j.leftUpperLeg.rotation.x = damp(j.leftUpperLeg.rotation.x, target.lulX, k, dt);
-    j.rightUpperLeg.rotation.x = damp(j.rightUpperLeg.rotation.x, target.rulX, k, dt);
-    j.leftLowerLeg.rotation.x = damp(j.leftLowerLeg.rotation.x, target.lllX, k, dt);
-    j.rightLowerLeg.rotation.x = damp(j.rightLowerLeg.rotation.x, target.rllX, k, dt);
+    if (this.landingTimer > 0) {
+      const p = this.landingTimer / 0.18;
+      const compression = Math.sin(clamp(p, 0, 1) * Math.PI);
+      t.rHip += 0.10 * compression;
+      t.lHip -= 0.08 * compression;
+      t.rKnee -= 0.28 * compression;
+      t.lKnee -= 0.28 * compression;
+      t.scaleY = 1 - 0.075 * compression;
+      t.scaleX = 1 + 0.045 * compression;
+      t.bob -= 0.035 * compression;
+    }
 
-    j.leftUpperArm.rotation.z = damp(j.leftUpperArm.rotation.z, target.luaZ, 13, dt);
-    j.rightUpperArm.rotation.z = damp(j.rightUpperArm.rotation.z, target.ruaZ, 13, dt);
-    j.leftLowerArm.rotation.z = damp(j.leftLowerArm.rotation.z, target.llaZ, 13, dt);
-    j.rightLowerArm.rotation.z = damp(j.rightLowerArm.rotation.z, target.rlaZ, 13, dt);
+    const k = running ? 19 : 15;
+    j.rightUpperLeg.rotation.z = damp(j.rightUpperLeg.rotation.z, t.rHip, k, dt);
+    j.leftUpperLeg.rotation.z = damp(j.leftUpperLeg.rotation.z, t.lHip, k, dt);
+    j.rightLowerLeg.rotation.z = damp(j.rightLowerLeg.rotation.z, t.rKnee, k + 2, dt);
+    j.leftLowerLeg.rotation.z = damp(j.leftLowerLeg.rotation.z, t.lKnee, k + 2, dt);
+    j.rightFoot.rotation.z = damp(j.rightFoot.rotation.z, t.rAnkle, k, dt);
+    j.leftFoot.rotation.z = damp(j.leftFoot.rotation.z, t.lAnkle, k, dt);
 
-    j.torso.rotation.x = damp(j.torso.rotation.x, target.torsoX, 11, dt);
-    j.torso.rotation.z = damp(j.torso.rotation.z, target.torsoZ, 10, dt);
-    j.head.rotation.x = damp(j.head.rotation.x, target.headX, 12, dt);
-    j.head.rotation.z = damp(j.head.rotation.z, target.headZ, 9, dt);
+    j.rightUpperArm.rotation.z = damp(j.rightUpperArm.rotation.z, t.rShoulder, k, dt);
+    j.leftUpperArm.rotation.z = damp(j.leftUpperArm.rotation.z, t.lShoulder, k, dt);
+    j.rightLowerArm.rotation.z = damp(j.rightLowerArm.rotation.z, t.rElbow, k + 1, dt);
+    j.leftLowerArm.rotation.z = damp(j.leftLowerArm.rotation.z, t.lElbow, k + 1, dt);
+
+    j.torso.rotation.z = damp(j.torso.rotation.z, t.torso, 12, dt);
+    j.head.rotation.z = damp(j.head.rotation.z, t.head, 12, dt);
+    j.visualRoot.position.y = damp(j.visualRoot.position.y, t.bob, 18, dt);
+    j.visualRoot.scale.y = damp(j.visualRoot.scale.y, t.scaleY, 20, dt);
+
+    const facingSign = Math.sign(j.visualRoot.scale.x) || 1;
+    j.visualRoot.scale.x = facingSign * damp(Math.abs(j.visualRoot.scale.x), t.scaleX, 20, dt);
   }
 }

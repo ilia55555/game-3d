@@ -1,42 +1,45 @@
 // File: stickman/src/model/stickman.config.js
-// Role: Central source for stickman proportions, spacing, collision height, and visual tuning values.
+// Role: Central source for the 2D hero proportions, spacing, collision height, and visual tuning values.
 // Scope: Numeric configuration only; it contains no Three.js object creation or animation code.
-// Rule: Model builders and gameplay consume these values while AI, combat, and levels stay separate.
-// Goal: Keep the character silhouette cohesive and make later proportion edits safe and fast.
+// Rule: Model builders and gameplay consume these values while combat, enemies, and levels stay separate.
+// Goal: Keep the side-view silhouette balanced and make proportion edits safe without touching rig logic.
 
 export const STICKMAN_CONFIG = Object.freeze({
-  pelvisY: 1.58,
-  torsoLength: 0.98,
-  torsoRadius: 0.19,
-  chestRadius: 0.245,
-  pelvisRadius: 0.205,
+  pelvisY: 1.43,
+  torsoLength: 0.92,
+  torsoHalfWidth: 0.19,
+  chestHalfWidth: 0.27,
+  pelvisHalfWidth: 0.22,
 
-  headRadius: 0.35,
-  headGap: 0.34,
+  headRadius: 0.32,
+  headGap: 0.31,
 
-  shoulderX: 0.33,
+  shoulderX: 0.23,
   shoulderYFactor: 0.82,
-  hipX: 0.14,
+  hipX: 0.105,
 
-  upperArm: 0.62,
-  lowerArm: 0.58,
-  upperArmRadius: 0.105,
-  lowerArmRadius: 0.095,
+  upperArm: 0.56,
+  lowerArm: 0.53,
+  upperArmRadius: 0.082,
+  lowerArmRadius: 0.074,
 
-  upperLeg: 0.72,
-  lowerLeg: 0.70,
-  upperLegRadius: 0.125,
-  lowerLegRadius: 0.108,
+  upperLeg: 0.70,
+  lowerLeg: 0.68,
+  upperLegRadius: 0.095,
+  lowerLegRadius: 0.082,
 
-  handRadius: 0.115,
-  footRadius: 0.14,
+  handRadius: 0.092,
+  footLength: 0.25,
+  footThickness: 0.105,
 
-  bodyColor: 0x111820,
-  bodySecondary: 0x17232d,
+  bodyColor: 0x11161c,
+  bodySecondary: 0x18232c,
+  outlineColor: 0x071015,
   accentIce: 0x7eeaff,
   accentFire: 0xff8d3a,
   eyeColor: 0xffffff,
 
-  playerRadius: 0.43,
-  playerHeight: 3.05
+  playerRadius: 0.34,
+  playerHeight: 2.70,
+  laneZ: 0
 });

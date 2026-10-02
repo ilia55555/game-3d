@@ -1,16 +1,29 @@
 // File: stickman/src/weapons/weapon.system.js
-// Role: Builds, equips, switches, and animates the hero sword and gun models.
+// Role: Builds, equips, switches, and lightly animates flat 2D sword and gun art for the side-view hero.
 // Scope: Weapon meshes, right-hand attachment, muzzle flash, and element accent color only.
-// Rule: Input, character animation, enemy AI, projectiles, and level geometry stay outside this file.
-// Goal: Let weapons be edited independently while remaining correctly attached to the hidden hand rig.
+// Rule: Input, hidden-rig posing, enemies, projectiles, and level geometry remain outside this file.
+// Goal: Make both weapons read clearly as drawn side-profile equipment that follows the invisible hand socket.
 
 import * as THREE from 'three';
 
-function mesh(geometry, material) {
-  const object = new THREE.Mesh(geometry, material);
-  object.castShadow = true;
-  object.receiveShadow = false;
-  return object;
+function material(color) {
+  return new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, toneMapped: false });
+}
+
+function shapeMesh(shape, mat, z = 0) {
+  const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape, 8), mat);
+  mesh.position.z = z;
+  return mesh;
+}
+
+function rectShape(x0, y0, x1, y1) {
+  const s = new THREE.Shape();
+  s.moveTo(x0, y0);
+  s.lineTo(x1, y0);
+  s.lineTo(x1, y1);
+  s.lineTo(x0, y1);
+  s.closePath();
+  return s;
 }
 
 export class WeaponSystem {
@@ -19,35 +32,24 @@ export class WeaponSystem {
     this.rig = stickman.userData.stickman;
     this.current = 'sword';
     this.flashTime = 0;
+    this.actionTime = 0;
 
-    this.dark = new THREE.MeshStandardMaterial({
-      color: 0x101820,
-      roughness: 0.42,
-      metalness: 0.58
-    });
-    this.metal = new THREE.MeshStandardMaterial({
-      color: 0xb7c4cf,
-      roughness: 0.28,
-      metalness: 0.82
-    });
-    this.accent = new THREE.MeshStandardMaterial({
-      color: 0x76eaff,
-      emissive: 0x76eaff,
-      emissiveIntensity: 1.6,
-      roughness: 0.24,
-      metalness: 0.35
-    });
+    this.dark = material(0x101820);
+    this.metal = material(0xd1d9df);
+    this.accent = material(0x76eaff);
     this.flashMaterial = new THREE.MeshBasicMaterial({
-      color: 0xdafaff,
+      color: 0xe6fbff,
       transparent: true,
       opacity: 0,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
       toneMapped: false
     });
 
     this.root = new THREE.Group();
-    this.root.name = 'weaponRig';
+    this.root.name = 'weapon2DRig';
+    this.root.position.z = 0.09;
     this.rig.sockets.rightGrip.add(this.root);
 
     this.sword = this.#buildSword();
@@ -58,73 +60,84 @@ export class WeaponSystem {
 
   #buildSword() {
     const root = new THREE.Group();
-    root.name = 'sword';
-    root.rotation.set(0.08, 0, 0);
+    root.name = 'sword2D';
+    root.position.set(0.02, -0.02, 0);
+    root.rotation.z = 0.18;
 
-    const grip = mesh(new THREE.CylinderGeometry(0.045, 0.052, 0.30, 12), this.dark);
-    grip.rotation.x = Math.PI / 2;
-    grip.position.z = -0.10;
+    const grip = shapeMesh(rectShape(-0.02, -0.045, 0.30, 0.045), this.dark, 0.02);
     root.add(grip);
 
-    const pommel = mesh(new THREE.SphereGeometry(0.065, 14, 10), this.accent);
-    pommel.position.z = 0.075;
-    root.add(pommel);
-
-    const guard = mesh(new THREE.BoxGeometry(0.42, 0.055, 0.07), this.metal);
-    guard.position.z = -0.25;
+    const guard = shapeMesh(rectShape(0.25, -0.11, 0.31, 0.11), this.metal, 0.025);
     root.add(guard);
 
-    const bladeGeometry = new THREE.BoxGeometry(0.095, 0.035, 1.18);
-    bladeGeometry.translate(0, 0, -0.59);
-    const blade = mesh(bladeGeometry, this.metal);
-    blade.position.z = -0.29;
+    const bladeShape = new THREE.Shape();
+    bladeShape.moveTo(0.31, -0.055);
+    bladeShape.lineTo(1.34, -0.040);
+    bladeShape.lineTo(1.54, 0.0);
+    bladeShape.lineTo(1.34, 0.058);
+    bladeShape.lineTo(0.31, 0.055);
+    bladeShape.closePath();
+    const blade = shapeMesh(bladeShape, this.metal, 0.03);
     root.add(blade);
 
-    const edge = mesh(new THREE.BoxGeometry(0.022, 0.045, 1.12), this.accent);
-    edge.position.set(0.050, 0, -0.87);
+    const edge = shapeMesh(rectShape(0.34, 0.040, 1.34, 0.070), this.accent, 0.034);
     root.add(edge);
 
-    return { root, blade, edge, guard };
+    const pommel = new THREE.Mesh(new THREE.CircleGeometry(0.065, 20), this.accent);
+    pommel.position.set(-0.055, 0, 0.03);
+    root.add(pommel);
+
+    return { root, blade, edge };
   }
 
   #buildGun() {
     const root = new THREE.Group();
-    root.name = 'gun';
-    root.position.set(0.01, 0.015, -0.02);
+    root.name = 'gun2D';
+    root.position.set(0.015, 0.00, 0);
 
-    const body = mesh(new THREE.BoxGeometry(0.22, 0.20, 0.62), this.dark);
-    body.position.z = -0.34;
-    root.add(body);
+    const bodyShape = new THREE.Shape();
+    bodyShape.moveTo(0.02, -0.10);
+    bodyShape.lineTo(0.68, -0.10);
+    bodyShape.lineTo(0.84, -0.03);
+    bodyShape.lineTo(0.80, 0.13);
+    bodyShape.lineTo(0.16, 0.15);
+    bodyShape.lineTo(0.02, 0.08);
+    bodyShape.closePath();
+    root.add(shapeMesh(bodyShape, this.dark, 0.03));
 
-    const upper = mesh(new THREE.BoxGeometry(0.16, 0.09, 0.56), this.metal);
-    upper.position.set(0, 0.105, -0.34);
-    root.add(upper);
+    const slide = shapeMesh(rectShape(0.15, 0.08, 0.76, 0.17), this.metal, 0.034);
+    root.add(slide);
 
-    const barrel = mesh(new THREE.CylinderGeometry(0.047, 0.047, 0.54, 14), this.metal);
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.z = -0.82;
+    const barrel = shapeMesh(rectShape(0.70, -0.025, 1.03, 0.055), this.metal, 0.036);
     root.add(barrel);
 
-    const grip = mesh(new THREE.BoxGeometry(0.13, 0.36, 0.15), this.dark);
-    grip.position.set(0, -0.24, -0.20);
-    grip.rotation.x = -0.20;
-    root.add(grip);
+    const gripShape = new THREE.Shape();
+    gripShape.moveTo(0.18, -0.08);
+    gripShape.lineTo(0.38, -0.08);
+    gripShape.lineTo(0.31, -0.48);
+    gripShape.lineTo(0.12, -0.46);
+    gripShape.closePath();
+    root.add(shapeMesh(gripShape, this.dark, 0.032));
 
-    const accentRail = mesh(new THREE.BoxGeometry(0.035, 0.035, 0.44), this.accent);
-    accentRail.position.set(0, 0.16, -0.36);
-    root.add(accentRail);
+    const rail = shapeMesh(rectShape(0.22, 0.18, 0.66, 0.205), this.accent, 0.038);
+    root.add(rail);
 
     const muzzle = new THREE.Object3D();
-    muzzle.name = 'gunMuzzle';
-    muzzle.position.set(0, 0, -1.10);
+    muzzle.name = 'gunMuzzle2D';
+    muzzle.position.set(1.05, 0.015, 0.045);
     root.add(muzzle);
 
-    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8), this.flashMaterial);
-    flash.position.copy(muzzle.position);
-    flash.scale.set(0.75, 0.75, 1.8);
+    const flashShape = new THREE.Shape();
+    flashShape.moveTo(0, 0);
+    flashShape.lineTo(0.28, 0.10);
+    flashShape.lineTo(0.18, 0.0);
+    flashShape.lineTo(0.30, -0.10);
+    flashShape.closePath();
+    const flash = shapeMesh(flashShape, this.flashMaterial, 0.05);
+    flash.position.set(1.04, 0.015, 0.05);
     root.add(flash);
 
-    return { root, muzzle, flash, body };
+    return { root, muzzle, flash };
   }
 
   select(name) {
@@ -132,26 +145,23 @@ export class WeaponSystem {
     this.current = name;
     this.sword.root.visible = name === 'sword';
     this.gun.root.visible = name === 'gun';
+    this.actionTime = 0;
     return this.current;
   }
 
-  cycle(direction = 1) {
-    if (direction === 0) return this.current;
+  cycle() {
     return this.select(this.current === 'sword' ? 'gun' : 'sword');
   }
 
   setElementMode(mode) {
     const color = mode === 'fire' ? 0xff8c38 : 0x76eaff;
     this.accent.color.setHex(color);
-    this.accent.emissive.setHex(color);
-    this.flashMaterial.color.setHex(mode === 'fire' ? 0xffd29d : 0xdafaff);
+    this.flashMaterial.color.setHex(mode === 'fire' ? 0xffd29d : 0xe6fbff);
   }
 
   triggerPrimary() {
-    if (this.current !== 'gun') return;
-    this.flashTime = 0.075;
-    this.gun.flash.scale.setScalar(1);
-    this.gun.flash.scale.z = 1.8;
+    this.actionTime = this.current === 'gun' ? 0.10 : 0.26;
+    if (this.current === 'gun') this.flashTime = 0.065;
   }
 
   getMuzzlePosition(target = new THREE.Vector3()) {
@@ -162,11 +172,17 @@ export class WeaponSystem {
 
   update(delta) {
     this.flashTime = Math.max(0, this.flashTime - delta);
-    const active = this.flashTime > 0;
-    this.flashMaterial.opacity = active ? this.flashTime / 0.075 : 0;
-    if (active) {
-      const pulse = 0.9 + Math.random() * 0.45;
-      this.gun.flash.scale.set(pulse, pulse, pulse * 1.8);
+    this.actionTime = Math.max(0, this.actionTime - delta);
+
+    this.flashMaterial.opacity = this.flashTime > 0 ? this.flashTime / 0.065 : 0;
+    if (this.flashTime > 0) {
+      const pulse = 0.9 + Math.random() * 0.35;
+      this.gun.flash.scale.set(pulse, pulse, 1);
     }
+
+    const gunKick = this.current === 'gun' && this.actionTime > 0
+      ? Math.sin((1 - this.actionTime / 0.10) * Math.PI) * 0.035
+      : 0;
+    this.gun.root.position.x = 0.015 - gunKick;
   }
 }

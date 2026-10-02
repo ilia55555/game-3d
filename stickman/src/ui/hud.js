@@ -1,8 +1,8 @@
 // File: stickman/src/ui/hud.js
-// Role: Updates health, energy, wave, score, enemy count, aura label, toast, and overlay text.
-// Scope: DOM presentation only; it never moves entities, applies damage, or creates Three.js objects.
-// Rule: Gameplay systems send state into this module instead of querying or styling HUD nodes themselves.
-// Goal: Keep main.js and gameplay modules free from repetitive browser UI manipulation.
+// Role: Updates hero health, energy, weapon label, aura label, toast, and pause/intro overlays.
+// Scope: DOM presentation only; it never moves the character, animates joints, or creates Three.js objects.
+// Rule: Character, input, weapon, aura, and level systems send their state into this UI module.
+// Goal: Keep the hero-only test scene clear while enemies and wave UI remain completely absent.
 
 export class GameHUD {
   constructor() {
@@ -10,9 +10,7 @@ export class GameHUD {
     this.hpText = document.querySelector('#hpText');
     this.energyFill = document.querySelector('#energyFill');
     this.energyText = document.querySelector('#energyText');
-    this.waveText = document.querySelector('#waveText');
-    this.enemyText = document.querySelector('#enemyText');
-    this.scoreText = document.querySelector('#scoreText');
+    this.weaponText = document.querySelector('#weaponText');
     this.auraBadge = document.querySelector('#auraBadge');
     this.toastNode = document.querySelector('#toast');
     this.overlay = document.querySelector('#overlay');
@@ -32,17 +30,10 @@ export class GameHUD {
     this.energyText.textContent = String(Math.ceil(player.energy));
   }
 
-  setWave(wave) {
-    this.waveText.textContent = `WAVE ${wave}`;
-    this.toast(`موج ${wave}`);
-  }
-
-  setEnemies(count) {
-    this.enemyText.textContent = String(count);
-  }
-
-  setScore(score) {
-    this.scoreText.textContent = String(score);
+  setWeapon(weapon) {
+    const gun = weapon === 'gun';
+    this.weaponText.textContent = gun ? 'GUN' : 'SWORD';
+    this.toast(gun ? 'تفنگ انتخاب شد' : 'شمشیر انتخاب شد');
   }
 
   setAura(mode) {
@@ -68,24 +59,16 @@ export class GameHUD {
   showPause() {
     this.overlay.classList.add('show');
     this.title.textContent = 'PAUSED';
-    this.description.textContent = 'بازی متوقف شده. برای ادامه دوباره وارد کنترل ماوس شو.';
+    this.description.textContent = 'تست کاراکتر متوقف شده. برای ادامه دوباره وارد کنترل ماوس شو.';
     this.startButton.textContent = 'ادامه';
-    this.small.textContent = 'ESC دوباره ماوس را آزاد می‌کند.';
-  }
-
-  showGameOver(score, wave) {
-    this.overlay.classList.add('show');
-    this.title.textContent = 'SYSTEM DOWN';
-    this.description.textContent = `امتیاز ${score} — رسیدی به موج ${wave}. برای شروع دوباره دکمه را بزن.`;
-    this.startButton.textContent = 'شروع دوباره';
-    this.small.textContent = 'همه چیز از موج اول ریست می‌شود.';
+    this.small.textContent = 'ESC ماوس را آزاد می‌کند.';
   }
 
   showIntro() {
     this.overlay.classList.add('show');
-    this.title.textContent = 'STICK // ELEMENT';
-    this.description.textContent = 'استیک‌من یکپارچه با هالهٔ عنصری. در محیط سه‌بعدی حرکت کن، دشمن‌ها را نابود کن و با Q بین حالت یخی و آتشی جابه‌جا شو.';
-    this.startButton.textContent = 'شروع بازی';
-    this.small.textContent = 'برای کنترل دوربین بعد از شروع، ماوس قفل می‌شود.';
+    this.title.textContent = 'STICK // HERO';
+    this.description.textContent = 'فقط کاراکتر اصلی فعال است: ریگ مفصلی مخفی، بدن یکپارچه، حرکت کامل و دو سلاح قابل تعویض.';
+    this.startButton.textContent = 'شروع تست کاراکتر';
+    this.small.textContent = '1 شمشیر، 2 تفنگ، اسکرول برای تغییر سلاح. دشمن‌ها فعلاً غیرفعال‌اند.';
   }
 }

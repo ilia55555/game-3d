@@ -1,45 +1,41 @@
 // File: stickman/src/model/stickman.materials.js
-// Role: Owns reusable body, face, and elemental accent materials for the main character.
-// Scope: Material definitions only; geometry, animation, gameplay, enemies, and levels stay elsewhere.
-// Rule: Elemental aura particles are handled by the effects module rather than fake glow shells here.
-// Goal: Give the stickman a clean unified body that reads well in both ice and fire modes.
+// Role: Owns flat body, outline, face, and elemental accent materials for the 2D main character.
+// Scope: Material definitions only; geometry, hidden joints, animation, gameplay, weapons, and levels stay elsewhere.
+// Rule: The character should read like clean 2D art even though it lives inside a Three.js 2.5D scene.
+// Goal: Remove the plastic 3D look and keep a crisp cohesive silhouette with subtle elemental accents.
 
 import * as THREE from 'three';
 import { STICKMAN_CONFIG as C } from './stickman.config.js';
 
 export function createStickmanMaterials() {
-  const body = new THREE.MeshStandardMaterial({
+  const body = new THREE.MeshBasicMaterial({
     color: C.bodyColor,
-    roughness: 0.38,
-    metalness: 0.16,
-    emissive: 0x07131b,
-    emissiveIntensity: 0.34
+    side: THREE.DoubleSide,
+    toneMapped: false
   });
 
-  const bodySoft = new THREE.MeshStandardMaterial({
+  const bodySoft = new THREE.MeshBasicMaterial({
     color: C.bodySecondary,
-    roughness: 0.48,
-    metalness: 0.10,
-    emissive: 0x07131b,
-    emissiveIntensity: 0.22
+    side: THREE.DoubleSide,
+    toneMapped: false
   });
 
-  const iceAccent = new THREE.MeshStandardMaterial({
-    color: 0xcff9ff,
-    roughness: 0.18,
-    metalness: 0.06,
-    emissive: C.accentIce,
-    emissiveIntensity: 2.0,
-    toneMapped: true
+  const outline = new THREE.MeshBasicMaterial({
+    color: C.outlineColor,
+    side: THREE.DoubleSide,
+    toneMapped: false
   });
 
-  const fireAccent = new THREE.MeshStandardMaterial({
-    color: 0xffd3a8,
-    roughness: 0.20,
-    metalness: 0.04,
-    emissive: C.accentFire,
-    emissiveIntensity: 2.2,
-    toneMapped: true
+  const iceAccent = new THREE.MeshBasicMaterial({
+    color: C.accentIce,
+    side: THREE.DoubleSide,
+    toneMapped: false
+  });
+
+  const fireAccent = new THREE.MeshBasicMaterial({
+    color: C.accentFire,
+    side: THREE.DoubleSide,
+    toneMapped: false
   });
 
   const eyes = new THREE.MeshBasicMaterial({
@@ -51,12 +47,12 @@ export function createStickmanMaterials() {
   const eyeGlow = new THREE.MeshBasicMaterial({
     color: C.accentIce,
     transparent: true,
-    opacity: 0.38,
+    opacity: 0.50,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
     toneMapped: false
   });
 
-  return { body, bodySoft, iceAccent, fireAccent, eyes, eyeGlow };
+  return { body, bodySoft, outline, iceAccent, fireAccent, eyes, eyeGlow };
 }

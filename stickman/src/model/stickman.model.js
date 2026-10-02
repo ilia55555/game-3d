@@ -1,183 +1,164 @@
 // File: stickman/src/model/stickman.model.js
-// Role: Builds the complete procedural 3D stickman and exposes its rig parts.
-// Scope: Geometry, hierarchy, detachable body groups, sockets, face, hands, and feet only.
-// Rule: Animation timing, gameplay, enemy AI, hit logic, and level construction live elsewhere.
-// Goal: Make every body part independently editable and detachable for later combat systems.
+// Role: Builds the cohesive procedural 3D hero and exposes animation joints and detachable part groups.
+// Scope: Character geometry, hierarchy, face, accent sockets, and element-material switching only.
+// Rule: Animation timing, controls, combat, enemy AI, aura particles, and level construction stay elsewhere.
+// Goal: Make the body read as one smooth character instead of separate glowing rods while staying modular.
 
 import * as THREE from 'three';
 import { createStickmanMaterials } from './stickman.materials.js';
 import { STICKMAN_CONFIG as C } from './stickman.config.js';
 
-function addGlowPair(parent, geometry, materials, {
-  position = [0, 0, 0],
-  rotation = [0, 0, 0],
-  glowScale = [1.18, 1.03, 1.18],
-  coreMaterial = materials.core,
-  glowMaterial = materials.glow,
-  castShadow = true
-} = {}) {
-  const core = new THREE.Mesh(geometry, coreMaterial);
-  core.position.set(...position);
-  core.rotation.set(...rotation);
-  core.castShadow = castShadow;
-  core.receiveShadow = false;
-  parent.add(core);
-
-  const halo = new THREE.Mesh(geometry, glowMaterial);
-  halo.position.copy(core.position);
-  halo.rotation.copy(core.rotation);
-  halo.scale.set(...glowScale);
-  halo.renderOrder = 2;
-  parent.add(halo);
-
-  return { core, halo };
+function shadowify(mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = false;
+  return mesh;
 }
 
-function addJoint(parent, radius, y, materials, intensity = 1) {
-  const geometry = new THREE.SphereGeometry(radius, 18, 12);
-  return addGlowPair(parent, geometry, materials, {
-    position: [0, y, 0],
-    glowScale: [1.16 + intensity * 0.03, 1.16 + intensity * 0.03, 1.16 + intensity * 0.03]
-  });
+function sphere(radius, material, scale = [1, 1, 1]) {
+  const mesh = shadowify(new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 16), material));
+  mesh.scale.set(...scale);
+  return mesh;
 }
 
-function createSegment(name, length, radius, materials) {
+function capsuleSegment(name, length, radius, material) {
   const pivot = new THREE.Group();
   pivot.name = name;
 
-  const cylinder = new THREE.CylinderGeometry(radius * 0.92, radius, length, 16, 1, false);
-  addGlowPair(pivot, cylinder, materials, {
-    position: [0, -length * 0.5, 0],
-    glowScale: [1.18, 1.02, 1.18]
-  });
-  addJoint(pivot, radius * 1.04, -length, materials, 0.8);
+  const geometry = new THREE.CapsuleGeometry(radius, Math.max(0.02, length - radius * 2), 8, 16);
+  const mesh = shadowify(new THREE.Mesh(geometry, material));
+  mesh.position.y = -length * 0.5;
+  pivot.add(mesh);
 
-  return pivot;
+  return { pivot, mesh };
 }
 
-function createHand(name, materials) {
-  const hand = new THREE.Group();
-  hand.name = name;
-  const geometry = new THREE.SphereGeometry(C.handRadius, 18, 12);
-  addGlowPair(hand, geometry, materials, { glowScale: [1.22, 1.22, 1.22] });
-  return hand;
-}
-
-function createFoot(name, side, materials) {
-  const foot = new THREE.Group();
-  foot.name = name;
-
-  const geometry = new THREE.SphereGeometry(C.footRadius, 18, 12);
-  const pair = addGlowPair(foot, geometry, materials, {
-    position: [side * 0.015, -0.045, 0.10],
-    glowScale: [1.18, 1.15, 1.45]
-  });
-  pair.core.scale.set(1.0, 0.68, 1.55);
-  pair.halo.scale.multiply(new THREE.Vector3(1.0, 0.68, 1.55));
-  return foot;
-}
-
-function createEyeGeometry(side) {
+function createEyeShape(side) {
   const s = side;
   const shape = new THREE.Shape();
-  shape.moveTo(-0.085 * s, 0.045);
-  shape.lineTo(0.088 * s, 0.012);
-  shape.lineTo(0.048 * s, -0.072);
-  shape.lineTo(-0.055 * s, -0.018);
+  shape.moveTo(-0.105 * s, 0.05);
+  shape.quadraticCurveTo(0.01 * s, 0.06, 0.11 * s, 0.005);
+  shape.quadraticCurveTo(0.045 * s, -0.095, -0.075 * s, -0.045);
   shape.closePath();
-  return new THREE.ShapeGeometry(shape);
+  return new THREE.ShapeGeometry(shape, 6);
 }
 
 function createHead(materials) {
   const head = new THREE.Group();
   head.name = 'head';
 
-  const sphere = new THREE.SphereGeometry(C.headRadius, 28, 20);
-  addGlowPair(head, sphere, materials, { glowScale: [1.12, 1.12, 1.12] });
+  const skull = sphere(C.headRadius, materials.bodySoft, [1.0, 1.04, 0.94]);
+  head.add(skull);
 
-  const haloRing = new THREE.Mesh(
-    new THREE.TorusGeometry(C.headRadius * 1.03, 0.038, 10, 48),
-    materials.glowStrong
-  );
-  haloRing.position.z = 0.012;
-  haloRing.renderOrder = 3;
-  head.add(haloRing);
+  const jaw = sphere(C.headRadius * 0.78, materials.body, [1.0, 0.58, 0.90]);
+  jaw.position.y = -C.headRadius * 0.34;
+  head.add(jaw);
 
+  const eyeRoots = [];
   for (const side of [-1, 1]) {
     const eyeRoot = new THREE.Group();
-    eyeRoot.position.set(side * 0.105, 0.035, C.headRadius * 0.985);
+    eyeRoot.position.set(side * 0.115, 0.045, C.headRadius * 0.90);
 
-    const glowEye = new THREE.Mesh(createEyeGeometry(side), materials.eyeGlow);
-    glowEye.scale.setScalar(1.24);
-    glowEye.position.z = -0.002;
-    eyeRoot.add(glowEye);
+    const aura = new THREE.Mesh(createEyeShape(side), materials.eyeGlow);
+    aura.scale.setScalar(1.28);
+    aura.position.z = -0.005;
+    eyeRoot.add(aura);
 
-    const eye = new THREE.Mesh(createEyeGeometry(side), materials.eyes);
+    const eye = new THREE.Mesh(createEyeShape(side), materials.eyes);
     eyeRoot.add(eye);
     head.add(eyeRoot);
+    eyeRoots.push({ root: eyeRoot, aura, eye });
   }
 
-  return head;
+  return { root: head, skull, jaw, eyeRoots };
 }
 
 function createTorso(materials) {
   const torso = new THREE.Group();
   torso.name = 'torso';
 
-  const geometry = new THREE.CylinderGeometry(
-    C.torsoTopRadius,
-    C.torsoBottomRadius,
-    C.torsoLength,
-    18,
-    1,
-    false
-  );
-  addGlowPair(torso, geometry, materials, {
-    position: [0, C.torsoLength * 0.5, 0],
-    glowScale: [1.19, 1.02, 1.19]
-  });
+  const center = shadowify(new THREE.Mesh(
+    new THREE.CapsuleGeometry(C.torsoRadius, C.torsoLength - C.torsoRadius * 2, 10, 20),
+    materials.body
+  ));
+  center.position.y = C.torsoLength * 0.5;
+  torso.add(center);
 
-  addJoint(torso, C.torsoBottomRadius * 1.06, 0, materials, 0.4);
-  addJoint(torso, C.torsoTopRadius * 1.08, C.torsoLength * 0.80, materials, 0.6);
-  addJoint(torso, C.torsoTopRadius * 0.78, C.torsoLength, materials, 0.5);
-  return torso;
+  const chest = sphere(C.chestRadius, materials.bodySoft, [1.28, 0.70, 0.82]);
+  chest.position.y = C.torsoLength * 0.78;
+  torso.add(chest);
+
+  const pelvis = sphere(C.pelvisRadius, materials.body, [1.24, 0.66, 0.88]);
+  pelvis.position.y = 0.02;
+  torso.add(pelvis);
+
+  const core = shadowify(new THREE.Mesh(new THREE.OctahedronGeometry(0.075, 1), materials.iceAccent));
+  core.position.set(0, C.torsoLength * 0.73, 0.205);
+  core.rotation.z = Math.PI * 0.25;
+  torso.add(core);
+
+  return { root: torso, center, chest, pelvis, core };
 }
 
 function createArm(side, materials) {
-  const sideName = side < 0 ? 'left' : 'right';
-  const upper = createSegment(`${sideName}UpperArm`, C.upperArm, C.upperArmRadius, materials);
-  const lower = createSegment(`${sideName}LowerArm`, C.lowerArm, C.lowerArmRadius, materials);
-  const hand = createHand(`${sideName}Hand`, materials);
+  const prefix = side < 0 ? 'left' : 'right';
+  const upper = capsuleSegment(`${prefix}UpperArm`, C.upperArm, C.upperArmRadius, materials.body);
+  const lower = capsuleSegment(`${prefix}LowerArm`, C.lowerArm, C.lowerArmRadius, materials.bodySoft);
 
-  lower.position.y = -C.upperArm;
+  lower.pivot.position.y = -C.upperArm;
+  upper.pivot.add(lower.pivot);
+
+  const elbow = sphere(C.upperArmRadius * 1.05, materials.bodySoft);
+  elbow.position.y = -C.upperArm;
+  upper.pivot.add(elbow);
+
+  const hand = new THREE.Group();
+  hand.name = `${prefix}Hand`;
   hand.position.y = -C.lowerArm;
-  upper.add(lower);
-  lower.add(hand);
+  lower.pivot.add(hand);
 
-  upper.rotation.z = side * -0.11;
-  lower.rotation.x = -0.10;
-  return { root: upper, upper, lower, hand };
+  const palm = sphere(C.handRadius, materials.body, [0.88, 1.04, 0.78]);
+  hand.add(palm);
+
+  const band = shadowify(new THREE.Mesh(new THREE.TorusGeometry(C.lowerArmRadius * 1.03, 0.018, 8, 20), materials.iceAccent));
+  band.rotation.x = Math.PI * 0.5;
+  band.position.y = 0.06;
+  hand.add(band);
+
+  upper.pivot.rotation.z = side * -0.12;
+  lower.pivot.rotation.x = -0.08;
+
+  return { root: upper.pivot, upper: upper.pivot, lower: lower.pivot, hand, band };
 }
 
 function createLeg(side, materials) {
-  const sideName = side < 0 ? 'left' : 'right';
-  const upper = createSegment(`${sideName}UpperLeg`, C.upperLeg, C.upperLegRadius, materials);
-  const lower = createSegment(`${sideName}LowerLeg`, C.lowerLeg, C.lowerLegRadius, materials);
-  const foot = createFoot(`${sideName}Foot`, side, materials);
+  const prefix = side < 0 ? 'left' : 'right';
+  const upper = capsuleSegment(`${prefix}UpperLeg`, C.upperLeg, C.upperLegRadius, materials.body);
+  const lower = capsuleSegment(`${prefix}LowerLeg`, C.lowerLeg, C.lowerLegRadius, materials.bodySoft);
 
-  lower.position.y = -C.upperLeg;
+  lower.pivot.position.y = -C.upperLeg;
+  upper.pivot.add(lower.pivot);
+
+  const knee = sphere(C.upperLegRadius * 1.02, materials.bodySoft, [1.02, 0.90, 1.0]);
+  knee.position.y = -C.upperLeg;
+  upper.pivot.add(knee);
+
+  const foot = new THREE.Group();
+  foot.name = `${prefix}Foot`;
   foot.position.y = -C.lowerLeg;
-  upper.add(lower);
-  lower.add(foot);
+  lower.pivot.add(foot);
 
-  return { root: upper, upper, lower, foot };
+  const sole = sphere(C.footRadius, materials.body, [0.92, 0.62, 1.68]);
+  sole.position.set(side * 0.012, -0.035, 0.115);
+  foot.add(sole);
+
+  return { root: upper.pivot, upper: upper.pivot, lower: lower.pivot, foot };
 }
 
-function makeSocket(name, position) {
-  const socket = new THREE.Object3D();
-  socket.name = name;
-  socket.position.copy(position);
-  return socket;
+function socket(name, position) {
+  const object = new THREE.Object3D();
+  object.name = name;
+  object.position.copy(position);
+  return object;
 }
 
 export function createStickmanModel() {
@@ -187,15 +168,14 @@ export function createStickmanModel() {
   root.position.y = C.pelvisY;
 
   const torso = createTorso(materials);
-  root.add(torso);
+  root.add(torso.root);
 
   const headY = C.torsoLength + C.headGap;
-  const shoulderY = C.torsoLength * C.shoulderYFactor;
-
   const head = createHead(materials);
-  head.position.set(0, headY, 0);
-  root.add(head);
+  head.root.position.set(0, headY, 0);
+  root.add(head.root);
 
+  const shoulderY = C.torsoLength * C.shoulderYFactor;
   const leftArm = createArm(-1, materials);
   const rightArm = createArm(1, materials);
   leftArm.root.position.set(-C.shoulderX, shoulderY, 0);
@@ -204,13 +184,13 @@ export function createStickmanModel() {
 
   const leftLeg = createLeg(-1, materials);
   const rightLeg = createLeg(1, materials);
-  leftLeg.root.position.set(-C.hipX, 0, 0);
-  rightLeg.root.position.set(C.hipX, 0, 0);
+  leftLeg.root.position.set(-C.hipX, 0.02, 0);
+  rightLeg.root.position.set(C.hipX, 0.02, 0);
   root.add(leftLeg.root, rightLeg.root);
 
   const parts = {
-    torso,
-    head,
+    torso: torso.root,
+    head: head.root,
     leftArm: leftArm.root,
     rightArm: rightArm.root,
     leftLeg: leftLeg.root,
@@ -218,8 +198,8 @@ export function createStickmanModel() {
   };
 
   const joints = {
-    torso,
-    head,
+    torso: torso.root,
+    head: head.root,
     leftUpperArm: leftArm.upper,
     leftLowerArm: leftArm.lower,
     leftHand: leftArm.hand,
@@ -235,44 +215,29 @@ export function createStickmanModel() {
   };
 
   const sockets = {
-    head: makeSocket('headSocket', new THREE.Vector3(0, headY, 0)),
-    leftArm: makeSocket('leftShoulderSocket', new THREE.Vector3(-C.shoulderX, shoulderY, 0)),
-    rightArm: makeSocket('rightShoulderSocket', new THREE.Vector3(C.shoulderX, shoulderY, 0)),
-    leftLeg: makeSocket('leftHipSocket', new THREE.Vector3(-C.hipX, 0, 0)),
-    rightLeg: makeSocket('rightHipSocket', new THREE.Vector3(C.hipX, 0, 0))
+    head: socket('headSocket', new THREE.Vector3(0, headY, 0)),
+    leftHand: socket('leftHandSocket', new THREE.Vector3(-C.shoulderX, shoulderY - C.upperArm - C.lowerArm, 0)),
+    rightHand: socket('rightHandSocket', new THREE.Vector3(C.shoulderX, shoulderY - C.upperArm - C.lowerArm, 0)),
+    chest: socket('chestSocket', new THREE.Vector3(0, C.torsoLength * 0.73, 0.22))
   };
-  Object.values(sockets).forEach(socket => root.add(socket));
+  Object.values(sockets).forEach(item => root.add(item));
 
-  const visibility = new Map(Object.keys(parts).map(name => [name, true]));
-
-  function setPartVisible(name, visible) {
-    const part = parts[name];
-    if (!part) return false;
-    part.visible = Boolean(visible);
-    visibility.set(name, Boolean(visible));
-    return true;
-  }
-
-  function togglePart(name) {
-    const next = !(visibility.get(name) ?? true);
-    setPartVisible(name, next);
-    return next;
-  }
-
-  function resetVisibility() {
-    for (const name of Object.keys(parts)) setPartVisible(name, true);
+  const elementMeshes = [torso.core, leftArm.band, rightArm.band];
+  function setElementMode(mode) {
+    const material = mode === 'fire' ? materials.fireAccent : materials.iceAccent;
+    for (const mesh of elementMeshes) mesh.material = material;
+    const color = mode === 'fire' ? C.accentFire : C.accentIce;
+    for (const eye of head.eyeRoots) eye.aura.color?.set?.(color);
+    materials.eyeGlow.color.set(color);
   }
 
   root.userData.stickman = {
-    version: 1,
+    version: 2,
     parts,
     joints,
     sockets,
     materials,
-    visibility,
-    setPartVisible,
-    togglePart,
-    resetVisibility,
+    setElementMode,
     dimensions: C
   };
 

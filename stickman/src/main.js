@@ -1,8 +1,8 @@
 // File: stickman/src/main.js
-// Role: Composes rendering, level, hero, hidden-rig animation, aura, weapons, controls, and HUD.
-// Scope: Startup and frame-loop orchestration only; each subsystem remains implemented in its own file.
+// Role: Composes rendering, 2.5D level, 2D hero, hidden-rig animation, aura, weapons, controls, and HUD.
+// Scope: Startup and frame-loop orchestration only; every implementation remains inside its dedicated module.
 // Rule: Enemy and projectile systems are intentionally not imported or started during the hero-design phase.
-// Goal: Keep the live GitHub Pages build focused entirely on refining the main character and its two weapons.
+// Goal: Keep the live GitHub Pages build focused on the main character, side movement, jump quality, and weapons.
 
 import { createScene } from './core/scene.js';
 import { createStickmanModel } from './model/stickman.model.js';
@@ -35,9 +35,8 @@ const player = new PlayerController({
   domElement: app.renderer.domElement,
   level,
 
-  onPrimaryAction({ weapon }) {
-    if (paused) return;
-    if (weapon === 'gun') weapons.triggerPrimary();
+  onPrimaryAction() {
+    if (!paused) weapons.triggerPrimary();
   },
 
   onWeaponChange(weapon) {
@@ -54,7 +53,6 @@ const player = new PlayerController({
   },
 
   onDeath() {
-    // No enemies are active in the character-design build, so this remains a future hook.
     paused = true;
     player.setEnabled(false);
   },

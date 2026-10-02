@@ -49,7 +49,6 @@ for (const button of document.querySelectorAll('[data-part]')) {
   });
 }
 
-const clock = new performance.constructor === Function ? null : null;
 let lastTime = performance.now();
 
 function frame(now) {

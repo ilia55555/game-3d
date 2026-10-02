@@ -13,14 +13,14 @@ export function solveLimb(x, y, upper, lower, bend = -1) {
 // Pure pose sampling also supplies deterministic, portable animation clips.
 export function samplePose({mode = 'idle', phase = 0, time = 0, speed = 0, weapon = 'sword', aim = 0, action = -1, landing = 0}) {
   const run = mode === 'run', moving = mode === 'walk' || run;
-  const pose = {lHip:0,rHip:0,lKnee:0,rKnee:0,lAnkle:0,rAnkle:0,lShoulder:0.12,rShoulder:0.35,lElbow:-0.25,rElbow:-0.42,lWrist:0,rWrist:0,torso:0,head:0,bob:0};
+  const pose = {lHip:0,rHip:0,lKnee:0,rKnee:0,lAnkle:0,rAnkle:0,lShoulder:-0.28,rShoulder:0.32,lElbow:-0.10,rElbow:-0.12,lWrist:0,rWrist:0,torso:0,head:0,bob:0};
   const compression = Math.sin(clamp(landing, 0, 1) * Math.PI) * 0.12;
   pose.bob = -compression + Math.sin(time * 2.2) * 0.006;
-  if (moving) pose.bob += (run ? 0.03 : 0.015) * Math.cos(phase * 2);
+  if (moving) pose.bob += -(run ? 0.15 : 0.085) + (run ? 0.025 : 0.01) * Math.cos(phase * 2);
   const footY = -C.pelvisY + C.footThickness + 0.02;
   for (const [side, offset, hipX] of [['r',0,0.07],['l',Math.PI,-0.055]]) {
     const cycle = ((phase + offset) % tau + tau) % tau / tau;
-    let x = side === 'r' ? 0.16 : -0.18, y = footY - pose.bob - 0.02;
+    let x = side === 'r' ? 0.12 : -0.12, y = footY - pose.bob - 0.02;
     if (moving) {
       const stride = (run ? 0.50 : 0.36) * clamp(speed / (run ? 7.2 : 4.45),0.15,1);
       const stance = 0.62;
@@ -43,14 +43,14 @@ export function samplePose({mode = 'idle', phase = 0, time = 0, speed = 0, weapo
   if (mode === 'fall') {pose.lShoulder=0.45; pose.lElbow=-0.6;}
   if (weapon === 'gun') {
     const recoil = action >= 0 ? Math.sin(action * Math.PI)*0.045 : 0;
-    const x = 0.78*Math.cos(aim)-recoil, y = 0.78*Math.sin(aim)-0.10;
-    const a=solveLimb(x,y,C.upperArm-0.035,C.lowerArm-0.040,-1);
+    const x = 0.57*Math.cos(aim)-recoil, y = 0.57*Math.sin(aim)-0.10;
+    const a=solveLimb(x,y,C.upperArm-0.035,C.lowerArm-0.040,1);
     pose.rShoulder=a[0]; pose.rElbow=a[1]; pose.rWrist=aim-a[0]-a[1];
-    const b=solveLimb(x+0.08,y-0.07,C.upperArm-0.035,C.lowerArm-0.040,-1);
+    const b=solveLimb(x+0.36-0.07*Math.cos(aim)+0.06*Math.sin(aim),y-0.07*Math.sin(aim)-0.06*Math.cos(aim),C.upperArm-0.035,C.lowerArm-0.040,1);
     pose.lShoulder=b[0]; pose.lElbow=b[1]; pose.lWrist=aim-b[0]-b[1];
   } else {
-    // Blade rests diagonally up; windup, strike and recovery form one continuous arc.
-    pose.rWrist=0.70-pose.rShoulder-pose.rElbow;
+    // Blade rests diagonally down; windup, strike and recovery form one continuous arc.
+    pose.rWrist=-0.35-pose.rShoulder-pose.rElbow;
     if(action >= 0) {
       const ease=u=>u*u*(3-2*u);
       const arc=action<0.25 ? lerp(0.35,2.5,ease(action/0.25)) : action<0.60 ? lerp(2.5,-0.65,ease((action-0.25)/0.35)) : lerp(-0.65,0.35,ease((action-0.60)/0.40));

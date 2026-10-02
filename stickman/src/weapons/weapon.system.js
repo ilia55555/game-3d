@@ -13,6 +13,7 @@ function material(color) {
 function shapeMesh(shape, mat, z = 0) {
   const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape, 8), mat);
   mesh.position.z = z;
+  mesh.renderOrder = 2;
   return mesh;
 }
 
@@ -61,8 +62,8 @@ export class WeaponSystem {
   #buildSword() {
     const root = new THREE.Group();
     root.name = 'sword2D';
-    root.position.set(0.02, -0.02, 0);
-    root.rotation.z = 0.18;
+    root.position.set(-0.14, 0, 0);
+    root.rotation.z = 0;
 
     const grip = shapeMesh(rectShape(-0.02, -0.045, 0.30, 0.045), this.dark, 0.02);
     root.add(grip);
@@ -93,7 +94,7 @@ export class WeaponSystem {
   #buildGun() {
     const root = new THREE.Group();
     root.name = 'gun2D';
-    root.position.set(0.015, 0.00, 0);
+    root.position.set(-0.25, 0.25, 0);
 
     const bodyShape = new THREE.Shape();
     bodyShape.moveTo(0.02, -0.10);
@@ -183,6 +184,6 @@ export class WeaponSystem {
     const gunKick = this.current === 'gun' && this.actionTime > 0
       ? Math.sin((1 - this.actionTime / 0.10) * Math.PI) * 0.035
       : 0;
-    this.gun.root.position.x = 0.015 - gunKick;
+    this.gun.root.position.x = -0.25 - gunKick;
   }
 }

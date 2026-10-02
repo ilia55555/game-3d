@@ -118,3 +118,17 @@ function frame(now) {
 }
 
 requestAnimationFrame(frame);
+
+const exportButton = document.querySelector('#exportUnity');
+exportButton.addEventListener('click', async () => {
+  exportButton.disabled = true;
+  exportButton.textContent = 'در حال ساخت خروجی…';
+  try {
+    const { exportUnityCharacter } = await import('./export/unity.export.js');
+    await exportUnityCharacter(hero);
+    exportButton.textContent = 'دانلود مدل + انیمیشن GLB';
+  } catch (error) {
+    console.error(error);
+    exportButton.textContent = 'خروجی ناموفق؛ دوباره تلاش کنید';
+  } finally { exportButton.disabled = false; }
+});

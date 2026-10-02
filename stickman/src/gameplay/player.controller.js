@@ -99,6 +99,8 @@ export class PlayerController {
       }
     });
 
+    window.addEventListener('blur', () => { this.keys.clear(); this.mouseDown = false; this.jumpBuffer = 0; });
+
     this.domElement.addEventListener('mousemove', event => {
       const rect = this.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
@@ -128,7 +130,7 @@ export class PlayerController {
 
   setEnabled(enabled) {
     this.enabled = Boolean(enabled);
-    if (!this.enabled) this.mouseDown = false;
+    if (!this.enabled) { this.mouseDown = false; this.keys.clear(); this.jumpBuffer = 0; }
   }
 
   requestPointerLock() {
@@ -225,7 +227,7 @@ export class PlayerController {
       if (!this.spendEnergy(2.5)) return;
       this.primaryCooldown = 0.12;
     } else {
-      this.primaryCooldown = 0.38;
+      this.primaryCooldown = 0.50;
     }
 
     this.animator.triggerPrimary(this.weapon);

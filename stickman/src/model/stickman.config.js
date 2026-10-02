@@ -5,11 +5,11 @@
 // Goal: Keep the side-view silhouette balanced and make proportion edits safe without touching rig logic.
 
 export const STICKMAN_CONFIG = Object.freeze({
-  pelvisY: 1.43,
+  pelvisY: 1.24,
   torsoLength: 0.92,
-  torsoHalfWidth: 0.19,
-  chestHalfWidth: 0.27,
-  pelvisHalfWidth: 0.22,
+  torsoHalfWidth: 0.13,
+  chestHalfWidth: 0.19,
+  pelvisHalfWidth: 0.16,
 
   headRadius: 0.32,
   headGap: 0.31,
@@ -33,7 +33,7 @@ export const STICKMAN_CONFIG = Object.freeze({
   footThickness: 0.105,
 
   bodyColor: 0x11161c,
-  bodySecondary: 0x18232c,
+  bodySecondary: 0x11161c,
   outlineColor: 0x071015,
   accentIce: 0x7eeaff,
   accentFire: 0xff8d3a,

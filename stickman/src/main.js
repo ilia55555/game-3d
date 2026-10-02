@@ -1,17 +1,16 @@
 // File: stickman/src/main.js
-// Role: Composes rendering, level, hero, animation, aura, controls, projectiles, enemies, and HUD.
-// Scope: Startup and frame-loop orchestration only; each gameplay system remains implemented elsewhere.
-// Rule: New mechanics should be added to dedicated modules and only connected here through callbacks.
-// Goal: Keep the playable game easy to edit while GitHub Pages can run it directly from this entry point.
+// Role: Composes rendering, level, hero, hidden-rig animation, aura, weapons, controls, and HUD.
+// Scope: Startup and frame-loop orchestration only; each subsystem remains implemented in its own file.
+// Rule: Enemy and projectile systems are intentionally not imported or started during the hero-design phase.
+// Goal: Keep the live GitHub Pages build focused entirely on refining the main character and its two weapons.
 
 import { createScene } from './core/scene.js';
 import { createStickmanModel } from './model/stickman.model.js';
 import { StickmanAnimator } from './animation/stickman.animations.js';
 import { createLevel01 } from './levels/level01.js';
 import { PlayerController } from './gameplay/player.controller.js';
-import { EnemySystem } from './enemies/enemy.system.js';
-import { ProjectileSystem } from './combat/projectile.system.js';
 import { ElementalAura } from './effects/elemental.aura.js';
+import { WeaponSystem } from './weapons/weapon.system.js';
 import { GameHUD } from './ui/hud.js';
 
 const canvas = document.querySelector('#game');
@@ -24,11 +23,9 @@ app.scene.add(hero);
 
 const animator = new StickmanAnimator(hero);
 const aura = new ElementalAura(hero);
+const weapons = new WeaponSystem(hero);
 
-let projectiles;
-let enemies;
-let gameStarted = false;
-let gameOver = false;
+let started = false;
 let paused = true;
 
 const player = new PlayerController({
@@ -37,66 +34,60 @@ const player = new PlayerController({
   camera: app.camera,
   domElement: app.renderer.domElement,
   level,
-  onShoot(origin, direction, mode) {
-    if (!paused && !gameOver) projectiles?.spawn(origin, direction, mode);
+
+  onPrimaryAction({ weapon }) {
+    if (paused) return;
+    if (weapon === 'gun') weapons.triggerPrimary();
   },
-  onMelee(origin, direction, mode) {
-    if (!paused && !gameOver) enemies?.meleeAttack(origin, direction, mode);
+
+  onWeaponChange(weapon) {
+    weapons.select(weapon);
+    animator.setWeapon(weapon);
+    hud.setWeapon(weapon);
   },
+
   onToggleElement(mode) {
     aura.setMode(mode);
+    weapons.setElementMode(mode);
+    hero.userData.stickman.setElementMode(mode);
     hud.setAura(mode);
   },
+
   onDeath() {
-    gameOver = true;
+    // No enemies are active in the character-design build, so this remains a future hook.
     paused = true;
-    enemies?.setEnabled(false);
-    hud.showGameOver(enemies?.score ?? 0, enemies?.wave ?? 1);
+    player.setEnabled(false);
   },
+
   onPause() {
-    if (!gameStarted || gameOver) return;
+    if (!started) return;
     paused = true;
     player.setEnabled(false);
     hud.showPause();
   }
 });
 
-enemies = new EnemySystem({
-  scene: app.scene,
-  level,
-  player,
-  onCountChange: count => hud.setEnemies(count),
-  onWaveChange: wave => hud.setWave(wave),
-  onScore: score => hud.setScore(score)
-});
-
-projectiles = new ProjectileSystem({
-  scene: app.scene,
-  enemySystem: enemies
-});
-
-function beginNewGame() {
-  gameStarted = true;
-  gameOver = false;
-  paused = false;
-  projectiles.clear();
-  player.reset(level.playerSpawn);
+function applyDefaultCharacterState() {
   player.elementMode = 'ice';
+  player.selectWeapon('sword');
   aura.setMode('ice');
+  weapons.setElementMode('ice');
+  hero.userData.stickman.setElementMode('ice');
   hud.setAura('ice');
-  hud.setScore(0);
-  hud.setEnemies(0);
-  enemies.start();
+  hud.setWeapon('sword');
+}
+
+function beginCharacterTest() {
+  started = true;
+  paused = false;
+  player.reset(level.playerSpawn);
+  applyDefaultCharacterState();
   player.setEnabled(true);
   hud.hideOverlay();
   player.requestPointerLock();
 }
 
-function resumeGame() {
-  if (gameOver) {
-    beginNewGame();
-    return;
-  }
+function resumeCharacterTest() {
   paused = false;
   player.setEnabled(true);
   hud.hideOverlay();
@@ -104,12 +95,12 @@ function resumeGame() {
 }
 
 hud.startButton.addEventListener('click', () => {
-  if (!gameStarted || gameOver) beginNewGame();
-  else resumeGame();
+  if (!started) beginCharacterTest();
+  else resumeCharacterTest();
 });
 
 hud.showIntro();
-hud.setAura('ice');
+applyDefaultCharacterState();
 hud.updatePlayer(player);
 
 let lastTime = performance.now();
@@ -121,14 +112,10 @@ function frame(now) {
   player.update(delta);
   animator.update(delta);
   aura.update(delta);
+  weapons.update(delta);
   level.update(now / 1000);
-
-  if (!paused && !gameOver) {
-    projectiles.update(delta);
-    enemies.update(delta);
-  }
-
   hud.updatePlayer(player);
+
   app.renderer.render(app.scene, app.camera);
 }
 

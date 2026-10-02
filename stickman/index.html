@@ -1,50 +1,65 @@
 <!doctype html>
 <!-- File: stickman/index.html -->
-<!-- Role: Browser entry point for the modular stickman project. -->
-<!-- Scope: Loads UI, Three.js import map, and the main ES module only. -->
-<!-- Rule: Character, animation, gameplay, enemy, and level code stay outside this file. -->
-<!-- Goal: Keep the preview easy to edit without rebuilding a giant single-file HTML. -->
+<!-- Role: Browser entry point and HUD shell for the playable modular stickman game. -->
+<!-- Scope: Static UI, Three.js import map, and ES-module bootstrapping only. -->
+<!-- Rule: Character, animation, combat, enemy AI, effects, and level logic stay in separate files. -->
+<!-- Goal: Keep GitHub Pages deployment simple while the game remains easy to extend module-by-module. -->
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Stickman Lab — Model Preview</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>STICK // ELEMENT</title>
   <link rel="stylesheet" href="./styles/main.css" />
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
     }
   }
   </script>
 </head>
 <body>
-  <canvas id="game"></canvas>
+  <canvas id="game" tabindex="0"></canvas>
 
-  <aside class="panel">
-    <div class="eyebrow">STICKMAN LAB</div>
-    <h1>طراحی مدل</h1>
-    <p>فعلاً فقط مدل، ریگ و انیمیشن‌های تست فعال‌اند. گیم‌پلی و دشمن‌ها در فایل‌های جدا آماده توسعه هستند.</p>
+  <div id="hud">
+    <section class="hud-card stats">
+      <div class="brand">STICK // ELEMENT</div>
+      <div class="bar-row"><span>HP</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">100</b></div>
+      <div class="bar-row"><span>ENERGY</span><div class="bar energy"><i id="energyFill"></i></div><b id="energyText">100</b></div>
+    </section>
 
-    <div class="controls" aria-label="Animation preview controls">
-      <button data-animation="idle" class="active">Idle</button>
-      <button data-animation="walk">Walk</button>
-      <button data-animation="combat">Combat Pose</button>
+    <section class="hud-card mission">
+      <small>ARENA</small>
+      <strong id="waveText">WAVE 1</strong>
+      <span><b id="enemyText">0</b> دشمن باقی مانده</span>
+      <span>امتیاز: <b id="scoreText">0</b></span>
+    </section>
+
+    <div id="crosshair"><i></i></div>
+    <div id="auraBadge">❄ ICE</div>
+    <div id="toast"></div>
+
+    <div class="help">
+      <span><kbd>WASD</kbd> حرکت</span>
+      <span><kbd>SHIFT</kbd> دویدن</span>
+      <span><kbd>SPACE</kbd> پرش</span>
+      <span><kbd>LMB</kbd> شلیک انرژی</span>
+      <span><kbd>F</kbd> ضربه نزدیک</span>
+      <span><kbd>Q</kbd> آتش / یخ</span>
+      <span><kbd>ESC</kbd> آزاد کردن ماوس</span>
     </div>
+  </div>
 
-    <div class="controls secondary" aria-label="Part visibility controls">
-      <button data-part="head">Head</button>
-      <button data-part="leftArm">Left Arm</button>
-      <button data-part="rightArm">Right Arm</button>
-      <button data-part="leftLeg">Left Leg</button>
-      <button data-part="rightLeg">Right Leg</button>
+  <div id="overlay" class="show">
+    <div class="start-card">
+      <div class="logo-mark">◈</div>
+      <div class="eyebrow">THIRD PERSON 3D ARENA</div>
+      <h1>STICK // ELEMENT</h1>
+      <p>استیک‌من یکپارچه با هالهٔ عنصری. در محیط سه‌بعدی حرکت کن، دشمن‌ها را نابود کن و با Q بین حالت یخی و آتشی جابه‌جا شو.</p>
+      <button id="startButton">شروع بازی</button>
+      <small>برای کنترل دوربین بعد از شروع، ماوس قفل می‌شود.</small>
     </div>
-
-    <div class="hint">با ماوس مدل را بچرخان، با اسکرول زوم کن. دکمه‌های عضو فقط برای تست معماری جداشدن قطعات هستند.</div>
-  </aside>
-
-  <div class="status" id="status">MODEL PREVIEW • MODULAR</div>
+  </div>
 
   <script type="module" src="./src/main.js"></script>
 </body>

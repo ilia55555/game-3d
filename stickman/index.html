@@ -1,14 +1,14 @@
 <!doctype html>
 <!-- File: stickman/index.html -->
-<!-- Role: Browser entry point and HUD shell for the hero-only character test scene. -->
+<!-- Role: Browser entry point and HUD shell for the 2.5D hero-only character test. -->
 <!-- Scope: Static UI, Three.js import map, and ES-module bootstrapping only. -->
 <!-- Rule: Character, animation, weapons, input, aura, and level logic stay in separate files. -->
-<!-- Goal: Keep GitHub Pages deployment simple while the main character is refined without enemies. -->
+<!-- Goal: Keep GitHub Pages simple while the new 2D hero is refined inside a 3D side-view world. -->
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>STICK // HERO LAB</title>
+  <title>STICK // 2.5D HERO</title>
   <link rel="stylesheet" href="./styles/main.css" />
   <script type="importmap">
   {
@@ -23,42 +23,41 @@
 
   <div id="hud">
     <section class="hud-card stats">
-      <div class="brand">STICK // HERO LAB</div>
+      <div class="brand">STICK // 2.5D</div>
       <div class="bar-row"><span>HP</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">100</b></div>
       <div class="bar-row"><span>ENERGY</span><div class="bar energy"><i id="energyFill"></i></div><b id="energyText">100</b></div>
     </section>
 
-    <section class="hud-card mission">
-      <small>CHARACTER TEST</small>
-      <strong id="weaponText">SWORD</strong>
+    <section class="hud-card weapon-card">
+      <small>WEAPON</small>
+      <strong id="weaponText">1 · SWORD</strong>
       <span><kbd>1</kbd> شمشیر &nbsp; <kbd>2</kbd> تفنگ</span>
       <span>اسکرول موس هم سلاح را عوض می‌کند</span>
     </section>
 
-    <div id="crosshair"><i></i></div>
     <div id="auraBadge">❄ ICE</div>
     <div id="toast"></div>
 
     <div class="help">
-      <span><kbd>WASD</kbd> حرکت</span>
+      <span><kbd>A / D</kbd> حرکت</span>
       <span><kbd>SHIFT</kbd> دویدن</span>
-      <span><kbd>SPACE</kbd> پرش</span>
+      <span><kbd>W / SPACE</kbd> پرش</span>
       <span><kbd>LMB / F</kbd> استفاده از سلاح</span>
       <span><kbd>1 / 2</kbd> شمشیر / تفنگ</span>
       <span><kbd>WHEEL</kbd> تغییر سلاح</span>
       <span><kbd>Q</kbd> آتش / یخ</span>
-      <span><kbd>ESC</kbd> آزاد کردن ماوس</span>
+      <span><kbd>ESC</kbd> توقف</span>
     </div>
   </div>
 
   <div id="overlay" class="show">
     <div class="start-card">
       <div class="logo-mark">◈</div>
-      <div class="eyebrow">THIRD PERSON CHARACTER LAB</div>
-      <h1>STICK // HERO</h1>
-      <p>فعلاً فقط کاراکتر اصلی فعال است. ریگ مفصلی داخل بدن مخفی شده، دست‌ها از تنه فاصله دارند و با شمشیر یا تفنگ می‌توانی حرکت و انیمیشن‌ها را تست کنی.</p>
-      <button id="startButton">شروع تست کاراکتر</button>
-      <small>دشمن‌ها در این نسخه عمداً غیرفعال هستند.</small>
+      <div class="eyebrow">2D HERO · 3D WORLD</div>
+      <h1>STICK // 2.5D</h1>
+      <p>نسخهٔ جدید از بغل بازی می‌شود. خود کاراکتر دوبعدی است، محیط سه‌بعدی مانده و ریگ مفصلی کاملاً داخل بدن مخفی شده است.</p>
+      <button id="startButton">تست کاراکتر</button>
+      <small>فعلاً هیچ دشمنی در صحنه ساخته نمی‌شود.</small>
     </div>
   </div>
 

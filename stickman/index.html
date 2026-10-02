@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- File: stickman/index.html -->
+<!-- Role: Browser entry point for the modular stickman project. -->
+<!-- Scope: Loads UI, Three.js import map, and the main ES module only. -->
+<!-- Rule: Character, animation, gameplay, enemy, and level code stay outside this file. -->
+<!-- Goal: Keep the preview easy to edit without rebuilding a giant single-file HTML. -->
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stickman Lab — Model Preview</title>
+  <link rel="stylesheet" href="./styles/main.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <aside class="panel">
+    <div class="eyebrow">STICKMAN LAB</div>
+    <h1>طراحی مدل</h1>
+    <p>فعلاً فقط مدل، ریگ و انیمیشن‌های تست فعال‌اند. گیم‌پلی و دشمن‌ها در فایل‌های جدا آماده توسعه هستند.</p>
+
+    <div class="controls" aria-label="Animation preview controls">
+      <button data-animation="idle" class="active">Idle</button>
+      <button data-animation="walk">Walk</button>
+      <button data-animation="combat">Combat Pose</button>
+    </div>
+
+    <div class="controls secondary" aria-label="Part visibility controls">
+      <button data-part="head">Head</button>
+      <button data-part="leftArm">Left Arm</button>
+      <button data-part="rightArm">Right Arm</button>
+      <button data-part="leftLeg">Left Leg</button>
+      <button data-part="rightLeg">Right Leg</button>
+    </div>
+
+    <div class="hint">با ماوس مدل را بچرخان، با اسکرول زوم کن. دکمه‌های عضو فقط برای تست معماری جداشدن قطعات هستند.</div>
+  </aside>
+
+  <div class="status" id="status">MODEL PREVIEW • MODULAR</div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -187,7 +187,7 @@ export function createStickmanModel() {
   const frontArm = createArm('frontArm', true, materials);
   const shoulderY = C.torsoLength * C.shoulderYFactor;
   backArm.root.position.set(-0.025, shoulderY, -0.05);
-  frontArm.root.position.set(0.055, shoulderY, 0.045);
+  frontArm.root.position.set(0.18, shoulderY, 0.045);
   visualRoot.add(backArm.root);
 
   const torso = createTorso(materials);
@@ -235,7 +235,7 @@ export function createStickmanModel() {
   }
 
   root.userData.stickman = {
-    version: 4,
+    version: 5,
     style: '2d-side-view',
     joints,
     sockets,

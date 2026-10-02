@@ -1,20 +1,31 @@
 // File: stickman/src/gameplay/player.controller.js
-// Role: Owns keyboard movement, jumping, sprinting, third-person camera, aiming, health, and energy.
-// Scope: Player input/state and world translation only; projectile visuals and enemy behavior stay elsewhere.
-// Rule: Character geometry, animation math, aura rendering, damage effects, and level construction remain separate.
-// Goal: Provide responsive WASD gameplay while keeping the controller independent from model implementation details.
+// Role: Owns keyboard movement, jumping, sprinting, corrected mouse look, and sword/gun selection.
+// Scope: Player input/state and world translation only; model geometry, weapon meshes, and levels stay elsewhere.
+// Rule: Hidden rig animation is requested through the animator and weapon visuals through callbacks.
+// Goal: Provide clean character testing with WASD plus 1/2 or mouse-wheel weapon switching and natural camera control.
 
 import * as THREE from 'three';
 
 export class PlayerController {
-  constructor({ stickman, animator, camera, domElement, level, onShoot, onMelee, onToggleElement, onDeath, onPause }) {
+  constructor({
+    stickman,
+    animator,
+    camera,
+    domElement,
+    level,
+    onPrimaryAction,
+    onWeaponChange,
+    onToggleElement,
+    onDeath,
+    onPause
+  }) {
     this.stickman = stickman;
     this.animator = animator;
     this.camera = camera;
     this.domElement = domElement;
     this.level = level;
-    this.onShoot = onShoot;
-    this.onMelee = onMelee;
+    this.onPrimaryAction = onPrimaryAction;
+    this.onWeaponChange = onWeaponChange;
     this.onToggleElement = onToggleElement;
     this.onDeath = onDeath;
     this.onPause = onPause;
@@ -22,7 +33,6 @@ export class PlayerController {
     this.enabled = false;
     this.keys = new Set();
     this.mouseDown = false;
-    this.velocity = new THREE.Vector3();
     this.moveVelocity = new THREE.Vector3();
     this.cameraTarget = new THREE.Vector3();
     this.cameraDesired = new THREE.Vector3();
@@ -39,8 +49,8 @@ export class PlayerController {
     this.energy = 100;
     this.maxEnergy = 100;
     this.elementMode = 'ice';
-    this.shotCooldown = 0;
-    this.meleeCooldown = 0;
+    this.weapon = 'sword';
+    this.primaryCooldown = 0;
     this.invulnerable = 0;
     this.dead = false;
 
@@ -50,23 +60,26 @@ export class PlayerController {
 
   #bindInput() {
     window.addEventListener('keydown', event => {
-      if (['Space', 'KeyQ', 'KeyF'].includes(event.code)) event.preventDefault();
+      if (['Space', 'KeyQ', 'KeyF', 'Digit1', 'Digit2', 'Numpad1', 'Numpad2'].includes(event.code)) {
+        event.preventDefault();
+      }
       this.keys.add(event.code);
 
       if (!this.enabled || this.dead || event.repeat) return;
+
       if (event.code === 'Space' && this.grounded) {
         this.verticalVelocity = 7.2;
         this.grounded = false;
       }
+
       if (event.code === 'KeyQ') {
         this.elementMode = this.elementMode === 'ice' ? 'fire' : 'ice';
         this.onToggleElement?.(this.elementMode);
       }
-      if (event.code === 'KeyF' && this.meleeCooldown <= 0) {
-        this.meleeCooldown = 0.48;
-        this.animator.triggerAttack();
-        this.onMelee?.(this.getAttackOrigin(), this.getAimDirection(), this.elementMode);
-      }
+
+      if (event.code === 'Digit1' || event.code === 'Numpad1') this.selectWeapon('sword');
+      if (event.code === 'Digit2' || event.code === 'Numpad2') this.selectWeapon('gun');
+      if (event.code === 'KeyF') this.#tryPrimary(true);
     });
 
     window.addEventListener('keyup', event => this.keys.delete(event.code));
@@ -76,14 +89,27 @@ export class PlayerController {
       this.mouseDown = true;
       if (this.enabled && document.pointerLockElement !== this.domElement) this.domElement.requestPointerLock();
     });
+
     window.addEventListener('mouseup', event => {
       if (event.button === 0) this.mouseDown = false;
     });
 
+    this.domElement.addEventListener('wheel', event => {
+      if (!this.enabled || this.dead) return;
+      event.preventDefault();
+      this.selectWeapon(this.weapon === 'sword' ? 'gun' : 'sword');
+    }, { passive: false });
+
     window.addEventListener('mousemove', event => {
       if (!this.enabled || document.pointerLockElement !== this.domElement) return;
-      this.yaw -= event.movementX * 0.00215;
-      this.pitch = THREE.MathUtils.clamp(this.pitch - event.movementY * 0.00175, -0.55, 0.32);
+
+      // Correct direction: moving the mouse right turns the camera/head right, not left.
+      this.yaw += event.movementX * 0.00215;
+      this.pitch = THREE.MathUtils.clamp(
+        this.pitch - event.movementY * 0.00175,
+        -0.55,
+        0.32
+      );
     });
 
     document.addEventListener('pointerlockchange', () => {
@@ -100,7 +126,18 @@ export class PlayerController {
   }
 
   requestPointerLock() {
-    if (this.enabled && document.pointerLockElement !== this.domElement) this.domElement.requestPointerLock();
+    if (this.enabled && document.pointerLockElement !== this.domElement) {
+      this.domElement.requestPointerLock();
+    }
+  }
+
+  selectWeapon(weapon) {
+    if (weapon !== 'sword' && weapon !== 'gun') return this.weapon;
+    if (weapon === this.weapon) return this.weapon;
+    this.weapon = weapon;
+    this.animator.setWeapon(weapon);
+    this.onWeaponChange?.(weapon);
+    return this.weapon;
   }
 
   reset(spawn = new THREE.Vector3()) {
@@ -110,11 +147,17 @@ export class PlayerController {
     this.verticalVelocity = 0;
     this.moveVelocity.set(0, 0, 0);
     this.grounded = true;
-    this.shotCooldown = 0;
-    this.meleeCooldown = 0;
+    this.primaryCooldown = 0;
     this.invulnerable = 0;
-    this.stickman.position.set(spawn.x, this.stickman.userData.stickman.dimensions.pelvisY, spawn.z);
+    this.weapon = 'sword';
+    this.animator.setWeapon('sword');
+    this.stickman.position.set(
+      spawn.x,
+      this.stickman.userData.stickman.dimensions.pelvisY,
+      spawn.z
+    );
     this.stickman.rotation.set(0, Math.PI - this.yaw, 0);
+    this.onWeaponChange?.('sword');
     this.#updateCamera(1);
   }
 
@@ -123,7 +166,7 @@ export class PlayerController {
   }
 
   getCenter(target = new THREE.Vector3()) {
-    return target.copy(this.stickman.position).add(new THREE.Vector3(0, 0.40, 0));
+    return target.copy(this.stickman.position).add(new THREE.Vector3(0, 0.42, 0));
   }
 
   getAimDirection(target = new THREE.Vector3()) {
@@ -137,10 +180,8 @@ export class PlayerController {
 
   getAttackOrigin(target = new THREE.Vector3()) {
     this.stickman.updateWorldMatrix(true, true);
-    const hand = this.stickman.userData.stickman.joints.rightHand;
-    hand.getWorldPosition(target);
-    const direction = this.getAimDirection(new THREE.Vector3());
-    return target.addScaledVector(direction, 0.26);
+    this.stickman.userData.stickman.sockets.rightGrip.getWorldPosition(target);
+    return target;
   }
 
   spendEnergy(amount) {
@@ -157,9 +198,6 @@ export class PlayerController {
     if (this.dead || this.invulnerable > 0) return false;
     this.hp = Math.max(0, this.hp - amount);
     this.invulnerable = 0.34;
-    document.body.classList.remove('damage-flash');
-    void document.body.offsetWidth;
-    document.body.classList.add('damage-flash');
     if (this.hp <= 0) {
       this.dead = true;
       this.enabled = false;
@@ -170,25 +208,41 @@ export class PlayerController {
     return true;
   }
 
-  #tryShoot() {
-    if (!this.mouseDown || this.shotCooldown > 0 || this.dead) return;
-    const cost = this.elementMode === 'fire' ? 11 : 8;
-    if (!this.spendEnergy(cost)) return;
-    this.shotCooldown = this.elementMode === 'fire' ? 0.20 : 0.14;
-    this.onShoot?.(this.getAttackOrigin(), this.getAimDirection(), this.elementMode);
+  #tryPrimary(force = false) {
+    if (this.dead || this.primaryCooldown > 0) return;
+    if (!force && !this.mouseDown) return;
+
+    if (this.weapon === 'gun') {
+      if (!this.spendEnergy(3)) return;
+      this.primaryCooldown = 0.11;
+    } else {
+      this.primaryCooldown = 0.42;
+    }
+
+    this.animator.triggerPrimary(this.weapon);
+    this.onPrimaryAction?.({
+      weapon: this.weapon,
+      origin: this.getAttackOrigin(new THREE.Vector3()),
+      direction: this.getAimDirection(new THREE.Vector3()),
+      element: this.elementMode
+    });
   }
 
   #updateCamera(delta) {
-    const target = this.cameraTarget.copy(this.stickman.position).add(new THREE.Vector3(0, 0.72, 0));
+    const target = this.cameraTarget
+      .copy(this.stickman.position)
+      .add(new THREE.Vector3(0, 0.76, 0));
+
     const cp = Math.cos(this.pitch);
     const view = new THREE.Vector3(
       Math.sin(this.yaw) * cp,
       Math.sin(this.pitch),
       -Math.cos(this.yaw) * cp
     );
+
     const distance = 6.2;
     this.cameraDesired.copy(target).addScaledVector(view, -distance);
-    this.cameraDesired.y += 1.55;
+    this.cameraDesired.y += 1.48;
 
     const smoothing = 1 - Math.exp(-Math.max(delta, 0.001) * 10);
     this.camera.position.lerp(this.cameraDesired, smoothing);
@@ -197,14 +251,20 @@ export class PlayerController {
 
   update(delta) {
     const dt = Math.min(delta, 0.05);
-    this.shotCooldown = Math.max(0, this.shotCooldown - dt);
-    this.meleeCooldown = Math.max(0, this.meleeCooldown - dt);
+    this.primaryCooldown = Math.max(0, this.primaryCooldown - dt);
     this.invulnerable = Math.max(0, this.invulnerable - dt);
-    this.energy = Math.min(this.maxEnergy, this.energy + dt * (this.mouseDown ? 9 : 18));
+    this.energy = Math.min(this.maxEnergy, this.energy + dt * (this.mouseDown && this.weapon === 'gun' ? 12 : 22));
+
+    this.animator.setLookPitch(this.pitch);
 
     if (!this.enabled || this.dead) {
       this.#updateCamera(dt);
-      this.animator.setMotion({ speed: 0, grounded: this.grounded, sprinting: false, verticalVelocity: this.verticalVelocity });
+      this.animator.setMotion({
+        speed: 0,
+        grounded: this.grounded,
+        sprinting: false,
+        verticalVelocity: this.verticalVelocity
+      });
       return;
     }
 
@@ -218,7 +278,7 @@ export class PlayerController {
     if (desired.lengthSq() > 1) desired.normalize();
 
     this.sprinting = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
-    const maxSpeed = this.sprinting ? 8.1 : 4.8;
+    const maxSpeed = this.sprinting ? 8.0 : 4.8;
     desired.multiplyScalar(maxSpeed);
 
     const acceleration = this.grounded ? 13 : 5.2;
@@ -231,7 +291,10 @@ export class PlayerController {
     this.stickman.position.x += this.moveVelocity.x * dt;
     this.stickman.position.z += this.moveVelocity.z * dt;
     this.stickman.position.y += this.verticalVelocity * dt;
-    this.level?.resolveCircle?.(this.stickman.position, this.stickman.userData.stickman.dimensions.playerRadius);
+    this.level?.resolveCircle?.(
+      this.stickman.position,
+      this.stickman.userData.stickman.dimensions.playerRadius
+    );
 
     if (this.stickman.position.y <= baseY) {
       this.stickman.position.y = baseY;
@@ -244,7 +307,10 @@ export class PlayerController {
     const speed = Math.hypot(this.moveVelocity.x, this.moveVelocity.z);
     const targetFacing = Math.PI - this.yaw;
     const current = this.stickman.rotation.y;
-    const angle = Math.atan2(Math.sin(targetFacing - current), Math.cos(targetFacing - current));
+    const angle = Math.atan2(
+      Math.sin(targetFacing - current),
+      Math.cos(targetFacing - current)
+    );
     this.stickman.rotation.y += angle * (1 - Math.exp(-dt * 13));
 
     this.animator.setMotion({
@@ -254,7 +320,7 @@ export class PlayerController {
       verticalVelocity: this.verticalVelocity
     });
 
-    this.#tryShoot();
+    this.#tryPrimary(false);
     this.#updateCamera(dt);
   }
 }

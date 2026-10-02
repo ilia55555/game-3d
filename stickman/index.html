@@ -1,14 +1,14 @@
 <!doctype html>
 <!-- File: stickman/index.html -->
-<!-- Role: Browser entry point and HUD shell for the playable modular stickman game. -->
+<!-- Role: Browser entry point and HUD shell for the hero-only character test scene. -->
 <!-- Scope: Static UI, Three.js import map, and ES-module bootstrapping only. -->
-<!-- Rule: Character, animation, combat, enemy AI, effects, and level logic stay in separate files. -->
-<!-- Goal: Keep GitHub Pages deployment simple while the game remains easy to extend module-by-module. -->
+<!-- Rule: Character, animation, weapons, input, aura, and level logic stay in separate files. -->
+<!-- Goal: Keep GitHub Pages deployment simple while the main character is refined without enemies. -->
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>STICK // ELEMENT</title>
+  <title>STICK // HERO LAB</title>
   <link rel="stylesheet" href="./styles/main.css" />
   <script type="importmap">
   {
@@ -23,16 +23,16 @@
 
   <div id="hud">
     <section class="hud-card stats">
-      <div class="brand">STICK // ELEMENT</div>
+      <div class="brand">STICK // HERO LAB</div>
       <div class="bar-row"><span>HP</span><div class="bar"><i id="hpFill"></i></div><b id="hpText">100</b></div>
       <div class="bar-row"><span>ENERGY</span><div class="bar energy"><i id="energyFill"></i></div><b id="energyText">100</b></div>
     </section>
 
     <section class="hud-card mission">
-      <small>ARENA</small>
-      <strong id="waveText">WAVE 1</strong>
-      <span><b id="enemyText">0</b> دشمن باقی مانده</span>
-      <span>امتیاز: <b id="scoreText">0</b></span>
+      <small>CHARACTER TEST</small>
+      <strong id="weaponText">SWORD</strong>
+      <span><kbd>1</kbd> شمشیر &nbsp; <kbd>2</kbd> تفنگ</span>
+      <span>اسکرول موس هم سلاح را عوض می‌کند</span>
     </section>
 
     <div id="crosshair"><i></i></div>
@@ -43,8 +43,9 @@
       <span><kbd>WASD</kbd> حرکت</span>
       <span><kbd>SHIFT</kbd> دویدن</span>
       <span><kbd>SPACE</kbd> پرش</span>
-      <span><kbd>LMB</kbd> شلیک انرژی</span>
-      <span><kbd>F</kbd> ضربه نزدیک</span>
+      <span><kbd>LMB / F</kbd> استفاده از سلاح</span>
+      <span><kbd>1 / 2</kbd> شمشیر / تفنگ</span>
+      <span><kbd>WHEEL</kbd> تغییر سلاح</span>
       <span><kbd>Q</kbd> آتش / یخ</span>
       <span><kbd>ESC</kbd> آزاد کردن ماوس</span>
     </div>
@@ -53,11 +54,11 @@
   <div id="overlay" class="show">
     <div class="start-card">
       <div class="logo-mark">◈</div>
-      <div class="eyebrow">THIRD PERSON 3D ARENA</div>
-      <h1>STICK // ELEMENT</h1>
-      <p>استیک‌من یکپارچه با هالهٔ عنصری. در محیط سه‌بعدی حرکت کن، دشمن‌ها را نابود کن و با Q بین حالت یخی و آتشی جابه‌جا شو.</p>
-      <button id="startButton">شروع بازی</button>
-      <small>برای کنترل دوربین بعد از شروع، ماوس قفل می‌شود.</small>
+      <div class="eyebrow">THIRD PERSON CHARACTER LAB</div>
+      <h1>STICK // HERO</h1>
+      <p>فعلاً فقط کاراکتر اصلی فعال است. ریگ مفصلی داخل بدن مخفی شده، دست‌ها از تنه فاصله دارند و با شمشیر یا تفنگ می‌توانی حرکت و انیمیشن‌ها را تست کنی.</p>
+      <button id="startButton">شروع تست کاراکتر</button>
+      <small>دشمن‌ها در این نسخه عمداً غیرفعال هستند.</small>
     </div>
   </div>
 

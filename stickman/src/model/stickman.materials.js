@@ -1,73 +1,62 @@
 // File: stickman/src/model/stickman.materials.js
-// Role: Owns all reusable materials used by the stickman model.
-// Scope: Core black body, orange glow shells, eye material, and debug socket material.
-// Rule: Geometry, animation, gameplay, damage, enemies, and levels must not be defined here.
-// Goal: Make the character's visual identity editable from one small focused file.
+// Role: Owns reusable body, face, and elemental accent materials for the main character.
+// Scope: Material definitions only; geometry, animation, gameplay, enemies, and levels stay elsewhere.
+// Rule: Elemental aura particles are handled by the effects module rather than fake glow shells here.
+// Goal: Give the stickman a clean unified body that reads well in both ice and fire modes.
 
 import * as THREE from 'three';
-import { STICKMAN_CONFIG } from './stickman.config.js';
+import { STICKMAN_CONFIG as C } from './stickman.config.js';
 
 export function createStickmanMaterials() {
-  const core = new THREE.MeshStandardMaterial({
-    color: 0x050505,
-    roughness: 0.62,
-    metalness: 0.08
+  const body = new THREE.MeshStandardMaterial({
+    color: C.bodyColor,
+    roughness: 0.38,
+    metalness: 0.16,
+    emissive: 0x07131b,
+    emissiveIntensity: 0.34
   });
 
-  const coreSoft = new THREE.MeshStandardMaterial({
-    color: 0x0b0908,
-    roughness: 0.74,
-    metalness: 0.03
+  const bodySoft = new THREE.MeshStandardMaterial({
+    color: C.bodySecondary,
+    roughness: 0.48,
+    metalness: 0.10,
+    emissive: 0x07131b,
+    emissiveIntensity: 0.22
   });
 
-  const glow = new THREE.MeshBasicMaterial({
-    color: STICKMAN_CONFIG.glowColor,
-    transparent: true,
-    opacity: 0.28,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide
+  const iceAccent = new THREE.MeshStandardMaterial({
+    color: 0xcff9ff,
+    roughness: 0.18,
+    metalness: 0.06,
+    emissive: C.accentIce,
+    emissiveIntensity: 2.0,
+    toneMapped: true
   });
 
-  const glowStrong = new THREE.MeshBasicMaterial({
-    color: STICKMAN_CONFIG.glowStrongColor,
-    transparent: true,
-    opacity: 0.58,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide
+  const fireAccent = new THREE.MeshStandardMaterial({
+    color: 0xffd3a8,
+    roughness: 0.20,
+    metalness: 0.04,
+    emissive: C.accentFire,
+    emissiveIntensity: 2.2,
+    toneMapped: true
   });
 
   const eyes = new THREE.MeshBasicMaterial({
-    color: STICKMAN_CONFIG.eyeColor,
+    color: C.eyeColor,
     side: THREE.DoubleSide,
     toneMapped: false
   });
 
   const eyeGlow = new THREE.MeshBasicMaterial({
-    color: 0xffc57a,
+    color: C.accentIce,
     transparent: true,
-    opacity: 0.48,
+    opacity: 0.38,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
     toneMapped: false
   });
 
-  const socketDebug = new THREE.MeshBasicMaterial({
-    color: 0x50e3ff,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.45
-  });
-
-  return {
-    core,
-    coreSoft,
-    glow,
-    glowStrong,
-    eyes,
-    eyeGlow,
-    socketDebug
-  };
+  return { body, bodySoft, iceAccent, fireAccent, eyes, eyeGlow };
 }

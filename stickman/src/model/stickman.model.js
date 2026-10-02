@@ -1,24 +1,12 @@
 // File: stickman/src/model/stickman.model.js
-// Role: Builds the cohesive procedural 3D hero and exposes a fully hidden articulation rig.
-// Scope: Character geometry, invisible joint hierarchy, face, hand sockets, and element eye color only.
-// Rule: Animation timing, input, weapon models, combat, enemies, aura particles, and levels stay elsewhere.
-// Goal: Make the hero read as one continuous body while shoulders, elbows, hips, knees, and wrists stay invisible.
+// Role: Builds the cohesive 2D hero and exposes a fully hidden shoulder/elbow/hip/knee/wrist rig.
+// Scope: Flat character geometry, invisible transform joints, face, hand sockets, and element accents only.
+// Rule: Animation timing, controls, weapons, enemies, aura particles, and 2.5D level construction stay elsewhere.
+// Goal: Make the hero read as one continuous drawn character while every articulation pivot remains invisible.
 
 import * as THREE from 'three';
 import { createStickmanMaterials } from './stickman.materials.js';
 import { STICKMAN_CONFIG as C } from './stickman.config.js';
-
-function shadowify(mesh) {
-  mesh.castShadow = true;
-  mesh.receiveShadow = false;
-  return mesh;
-}
-
-function sphere(radius, material, scale = [1, 1, 1]) {
-  const object = shadowify(new THREE.Mesh(new THREE.SphereGeometry(radius, 26, 18), material));
-  object.scale.set(...scale);
-  return object;
-}
 
 function hiddenJoint(name) {
   const joint = new THREE.Group();
@@ -27,229 +15,233 @@ function hiddenJoint(name) {
   return joint;
 }
 
-function capsuleMesh(length, radius, material, overlap = 0) {
-  const effective = Math.max(radius * 2 + 0.02, length + overlap);
-  const geometry = new THREE.CapsuleGeometry(radius, Math.max(0.02, effective - radius * 2), 10, 18);
-  return shadowify(new THREE.Mesh(geometry, material));
+function planarMesh(geometry, material, z = 0) {
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.z = z;
+  mesh.frustumCulled = false;
+  return mesh;
 }
 
-function createEyeShape(side) {
-  const s = side;
+function capsuleShape(length, radius) {
+  const r = radius;
   const shape = new THREE.Shape();
-  shape.moveTo(-0.105 * s, 0.05);
-  shape.quadraticCurveTo(0.01 * s, 0.06, 0.11 * s, 0.005);
-  shape.quadraticCurveTo(0.045 * s, -0.095, -0.075 * s, -0.045);
+  shape.moveTo(-r, -r * 0.12);
+  shape.quadraticCurveTo(-r, r * 0.52, 0, r * 0.58);
+  shape.quadraticCurveTo(r, r * 0.52, r, -r * 0.12);
+  shape.lineTo(r, -length + r * 0.20);
+  shape.quadraticCurveTo(r, -length, 0, -length - r * 0.12);
+  shape.quadraticCurveTo(-r, -length, -r, -length + r * 0.20);
   shape.closePath();
-  return new THREE.ShapeGeometry(shape, 8);
+  return shape;
 }
 
-function createHead(materials) {
-  const head = hiddenJoint('headJoint');
+function capsule2D(name, length, radius, material, z) {
+  const pivot = hiddenJoint(name);
+  const geometry = new THREE.ShapeGeometry(capsuleShape(length, radius), 12);
+  const mesh = planarMesh(geometry, material, z);
+  pivot.add(mesh);
+  return { pivot, mesh };
+}
 
-  const skull = sphere(C.headRadius, materials.body, [1.0, 1.045, 0.95]);
-  head.add(skull);
-
-  const jaw = sphere(C.headRadius * 0.79, materials.body, [1.0, 0.60, 0.91]);
-  jaw.position.y = -C.headRadius * 0.33;
-  head.add(jaw);
-
-  const eyeRoots = [];
-  for (const side of [-1, 1]) {
-    const eyeRoot = new THREE.Group();
-    eyeRoot.position.set(side * 0.115, 0.045, C.headRadius * 0.905);
-
-    const aura = new THREE.Mesh(createEyeShape(side), materials.eyeGlow);
-    aura.scale.setScalar(1.24);
-    aura.position.z = -0.004;
-    eyeRoot.add(aura);
-
-    const eye = new THREE.Mesh(createEyeShape(side), materials.eyes);
-    eyeRoot.add(eye);
-    head.add(eyeRoot);
-    eyeRoots.push({ root: eyeRoot, aura, eye });
-  }
-
-  return { root: head, skull, jaw, eyeRoots };
+function ellipse(radiusX, radiusY, material, z) {
+  const mesh = planarMesh(new THREE.CircleGeometry(1, 32), material, z);
+  mesh.scale.set(radiusX, radiusY, 1);
+  return mesh;
 }
 
 function createTorso(materials) {
-  const torso = hiddenJoint('torsoJoint');
+  const root = hiddenJoint('torsoJoint');
+  const s = new THREE.Shape();
+  const p = C.pelvisHalfWidth;
+  const w = C.torsoHalfWidth;
+  const c = C.chestHalfWidth;
+  const h = C.torsoLength;
 
-  const center = capsuleMesh(C.torsoLength, C.torsoRadius, materials.body, 0.06);
-  center.position.y = C.torsoLength * 0.5;
-  center.scale.set(1.02, 1.0, 0.93);
-  torso.add(center);
+  s.moveTo(-p, 0.02);
+  s.quadraticCurveTo(-p * 1.04, h * 0.18, -w, h * 0.36);
+  s.quadraticCurveTo(-w * 1.08, h * 0.58, -c, h * 0.82);
+  s.quadraticCurveTo(-c * 0.92, h, -c * 0.62, h * 1.04);
+  s.lineTo(c * 0.62, h * 1.04);
+  s.quadraticCurveTo(c * 0.92, h, c, h * 0.82);
+  s.quadraticCurveTo(w * 1.08, h * 0.58, w, h * 0.36);
+  s.quadraticCurveTo(p * 1.04, h * 0.18, p, 0.02);
+  s.quadraticCurveTo(0, -0.08, -p, 0.02);
 
-  const chest = sphere(C.chestRadius, materials.body, [1.31, 0.73, 0.85]);
-  chest.position.y = C.torsoLength * 0.78;
-  torso.add(chest);
+  const body = planarMesh(new THREE.ShapeGeometry(s, 18), materials.body, 0.00);
+  root.add(body);
 
-  const pelvis = sphere(C.pelvisRadius, materials.body, [1.28, 0.70, 0.92]);
-  pelvis.position.y = 0.025;
-  torso.add(pelvis);
+  const chestAccent = ellipse(0.050, 0.072, materials.iceAccent, 0.022);
+  chestAccent.position.set(0.055, h * 0.73, 0.022);
+  root.add(chestAccent);
 
-  const neck = capsuleMesh(0.34, 0.105, materials.body, 0.10);
-  neck.position.y = C.torsoLength + 0.12;
-  torso.add(neck);
-
-  return { root: torso, center, chest, pelvis, neck };
+  return { root, body, chestAccent };
 }
 
-function createArm(side, materials) {
-  const prefix = side < 0 ? 'left' : 'right';
-  const shoulder = hiddenJoint(`${prefix}ShoulderJoint`);
-  const elbow = hiddenJoint(`${prefix}ElbowJoint`);
-  const wrist = hiddenJoint(`${prefix}WristJoint`);
+function createHead(materials) {
+  const root = hiddenJoint('headJoint');
 
-  // The meshes overlap slightly around elbow/wrist so the rig bends without a visible joint sphere or gap.
-  const upperMesh = capsuleMesh(C.upperArm + 0.08, C.upperArmRadius, materials.body, 0.08);
-  upperMesh.position.y = -(C.upperArm * 0.5 - 0.025);
-  shoulder.add(upperMesh);
+  const head = ellipse(C.headRadius, C.headRadius * 1.03, materials.body, 0.065);
+  root.add(head);
 
-  elbow.position.y = -C.upperArm + 0.07;
+  const jaw = ellipse(C.headRadius * 0.77, C.headRadius * 0.48, materials.body, 0.066);
+  jaw.position.set(0.03, -C.headRadius * 0.34, 0.066);
+  root.add(jaw);
+
+  const eyeShape = new THREE.Shape();
+  eyeShape.moveTo(-0.08, 0.035);
+  eyeShape.quadraticCurveTo(0.015, 0.065, 0.105, 0.015);
+  eyeShape.quadraticCurveTo(0.050, -0.075, -0.065, -0.042);
+  eyeShape.closePath();
+
+  const glow = planarMesh(new THREE.ShapeGeometry(eyeShape), materials.eyeGlow, 0.080);
+  glow.scale.setScalar(1.24);
+  glow.position.set(0.105, 0.035, 0.080);
+  root.add(glow);
+
+  const eye = planarMesh(new THREE.ShapeGeometry(eyeShape), materials.eyes, 0.086);
+  eye.position.set(0.105, 0.035, 0.086);
+  root.add(eye);
+
+  return { root, head, jaw, eye, glow };
+}
+
+function createArm(name, front, materials) {
+  const zBase = front ? 0.045 : -0.055;
+  const shoulder = hiddenJoint(`${name}ShoulderJoint`);
+  const elbow = hiddenJoint(`${name}ElbowJoint`);
+  const wrist = hiddenJoint(`${name}WristJoint`);
+
+  const upper = capsule2D(`${name}UpperVisual`, C.upperArm + 0.075, C.upperArmRadius, front ? materials.body : materials.bodySoft, zBase);
+  shoulder.add(upper.mesh);
+
+  elbow.position.y = -C.upperArm + 0.035;
   shoulder.add(elbow);
 
-  const lowerMesh = capsuleMesh(C.lowerArm + 0.10, C.lowerArmRadius, materials.body, 0.10);
-  lowerMesh.position.y = -(C.lowerArm * 0.5 - 0.025);
-  elbow.add(lowerMesh);
+  const lower = capsule2D(`${name}LowerVisual`, C.lowerArm + 0.080, C.lowerArmRadius, front ? materials.body : materials.bodySoft, zBase + 0.002);
+  elbow.add(lower.mesh);
 
-  wrist.position.y = -C.lowerArm + 0.075;
+  wrist.position.y = -C.lowerArm + 0.040;
   elbow.add(wrist);
 
-  const palm = sphere(C.handRadius, materials.body, [0.92, 1.06, 0.82]);
-  palm.position.y = -0.02;
-  wrist.add(palm);
+  const hand = ellipse(C.handRadius, C.handRadius * 0.92, front ? materials.body : materials.bodySoft, zBase + 0.004);
+  hand.position.set(0.025, -0.025, zBase + 0.004);
+  wrist.add(hand);
 
   const gripSocket = new THREE.Object3D();
-  gripSocket.name = `${prefix}GripSocket`;
-  gripSocket.position.set(0, -0.01, -0.06);
+  gripSocket.name = `${name}GripSocket`;
+  gripSocket.position.set(0.055, -0.015, 0.018);
   wrist.add(gripSocket);
 
-  shoulder.rotation.z = side * -0.18;
-  elbow.rotation.x = -0.10;
-
-  return {
-    root: shoulder,
-    shoulder,
-    elbow,
-    wrist,
-    hand: wrist,
-    gripSocket,
-    upperMesh,
-    lowerMesh
-  };
+  return { root: shoulder, shoulder, elbow, wrist, hand, gripSocket };
 }
 
-function createLeg(side, materials) {
-  const prefix = side < 0 ? 'left' : 'right';
-  const hip = hiddenJoint(`${prefix}HipJoint`);
-  const knee = hiddenJoint(`${prefix}KneeJoint`);
-  const ankle = hiddenJoint(`${prefix}AnkleJoint`);
+function createLeg(name, front, materials) {
+  const zBase = front ? 0.025 : -0.035;
+  const hip = hiddenJoint(`${name}HipJoint`);
+  const knee = hiddenJoint(`${name}KneeJoint`);
+  const ankle = hiddenJoint(`${name}AnkleJoint`);
 
-  const upperMesh = capsuleMesh(C.upperLeg + 0.10, C.upperLegRadius, materials.body, 0.10);
-  upperMesh.position.y = -(C.upperLeg * 0.5 - 0.025);
-  hip.add(upperMesh);
+  const upper = capsule2D(`${name}UpperVisual`, C.upperLeg + 0.085, C.upperLegRadius, front ? materials.body : materials.bodySoft, zBase);
+  hip.add(upper.mesh);
 
-  knee.position.y = -C.upperLeg + 0.075;
+  knee.position.y = -C.upperLeg + 0.042;
   hip.add(knee);
 
-  const lowerMesh = capsuleMesh(C.lowerLeg + 0.10, C.lowerLegRadius, materials.body, 0.10);
-  lowerMesh.position.y = -(C.lowerLeg * 0.5 - 0.02);
-  knee.add(lowerMesh);
+  const lower = capsule2D(`${name}LowerVisual`, C.lowerLeg + 0.080, C.lowerLegRadius, front ? materials.body : materials.bodySoft, zBase + 0.002);
+  knee.add(lower.mesh);
 
-  ankle.position.y = -C.lowerLeg + 0.075;
+  ankle.position.y = -C.lowerLeg + 0.040;
   knee.add(ankle);
 
-  const sole = sphere(C.footRadius, materials.body, [0.94, 0.62, 1.72]);
-  sole.position.set(side * 0.012, -0.04, 0.115);
-  ankle.add(sole);
+  const footShape = new THREE.Shape();
+  footShape.moveTo(-0.05, 0.04);
+  footShape.quadraticCurveTo(0.10, 0.09, C.footLength, 0.02);
+  footShape.quadraticCurveTo(C.footLength + 0.04, -0.05, C.footLength * 0.78, -C.footThickness);
+  footShape.lineTo(-0.07, -C.footThickness * 0.82);
+  footShape.quadraticCurveTo(-0.11, -0.02, -0.05, 0.04);
 
-  return { root: hip, hip, knee, ankle, foot: ankle, upperMesh, lowerMesh };
+  const foot = planarMesh(new THREE.ShapeGeometry(footShape), front ? materials.body : materials.bodySoft, zBase + 0.004);
+  foot.position.set(0.015, -0.02, zBase + 0.004);
+  ankle.add(foot);
+
+  return { root: hip, hip, knee, ankle, foot };
 }
 
 export function createStickmanModel() {
   const materials = createStickmanMaterials();
   const root = new THREE.Group();
-  root.name = 'stickmanRoot';
-  root.position.y = C.pelvisY;
+  root.name = 'stickman2DRoot';
+  root.position.set(0, C.pelvisY, C.laneZ);
+
+  const visualRoot = new THREE.Group();
+  visualRoot.name = 'visualRoot';
+  root.add(visualRoot);
+
+  const backLeg = createLeg('backLeg', false, materials);
+  const frontLeg = createLeg('frontLeg', true, materials);
+  backLeg.root.position.set(-0.055, 0.02, -0.03);
+  frontLeg.root.position.set(0.070, 0.02, 0.02);
+  visualRoot.add(backLeg.root, frontLeg.root);
+
+  const backArm = createArm('backArm', false, materials);
+  const frontArm = createArm('frontArm', true, materials);
+  const shoulderY = C.torsoLength * C.shoulderYFactor;
+  backArm.root.position.set(-0.025, shoulderY, -0.05);
+  frontArm.root.position.set(0.055, shoulderY, 0.045);
+  visualRoot.add(backArm.root);
 
   const torso = createTorso(materials);
-  root.add(torso.root);
+  visualRoot.add(torso.root);
+  visualRoot.add(frontArm.root);
 
-  const headY = C.torsoLength + C.headGap;
   const head = createHead(materials);
-  head.root.position.set(0, headY, 0);
-  root.add(head.root);
-
-  const shoulderY = C.torsoLength * C.shoulderYFactor;
-  const leftArm = createArm(-1, materials);
-  const rightArm = createArm(1, materials);
-
-  // Arms intentionally float just outside the torso silhouette; only the invisible shoulder pivots connect them.
-  leftArm.root.position.set(-C.shoulderX - 0.045, shoulderY, 0);
-  rightArm.root.position.set(C.shoulderX + 0.045, shoulderY, 0);
-  root.add(leftArm.root, rightArm.root);
-
-  const leftLeg = createLeg(-1, materials);
-  const rightLeg = createLeg(1, materials);
-  leftLeg.root.position.set(-C.hipX, 0.03, 0);
-  rightLeg.root.position.set(C.hipX, 0.03, 0);
-  root.add(leftLeg.root, rightLeg.root);
-
-  const parts = {
-    torso: torso.root,
-    head: head.root,
-    leftArm: leftArm.root,
-    rightArm: rightArm.root,
-    leftLeg: leftLeg.root,
-    rightLeg: rightLeg.root
-  };
+  head.root.position.set(0.025, C.torsoLength + C.headGap, 0.065);
+  visualRoot.add(head.root);
 
   const joints = {
+    visualRoot,
     torso: torso.root,
     head: head.root,
-    leftUpperArm: leftArm.shoulder,
-    leftLowerArm: leftArm.elbow,
-    leftHand: leftArm.wrist,
-    rightUpperArm: rightArm.shoulder,
-    rightLowerArm: rightArm.elbow,
-    rightHand: rightArm.wrist,
-    leftUpperLeg: leftLeg.hip,
-    leftLowerLeg: leftLeg.knee,
-    leftFoot: leftLeg.ankle,
-    rightUpperLeg: rightLeg.hip,
-    rightLowerLeg: rightLeg.knee,
-    rightFoot: rightLeg.ankle
+    leftUpperArm: backArm.shoulder,
+    leftLowerArm: backArm.elbow,
+    leftHand: backArm.wrist,
+    rightUpperArm: frontArm.shoulder,
+    rightLowerArm: frontArm.elbow,
+    rightHand: frontArm.wrist,
+    leftUpperLeg: backLeg.hip,
+    leftLowerLeg: backLeg.knee,
+    leftFoot: backLeg.ankle,
+    rightUpperLeg: frontLeg.hip,
+    rightLowerLeg: frontLeg.knee,
+    rightFoot: frontLeg.ankle
   };
 
   const sockets = {
-    rightGrip: rightArm.gripSocket,
-    leftGrip: leftArm.gripSocket,
-    head: head.root,
-    chest: torso.root
+    rightGrip: frontArm.gripSocket,
+    leftGrip: backArm.gripSocket
   };
 
   function setElementMode(mode) {
+    const material = mode === 'fire' ? materials.fireAccent : materials.iceAccent;
+    torso.chestAccent.material = material;
     const color = mode === 'fire' ? C.accentFire : C.accentIce;
     materials.eyeGlow.color.setHex(color);
-    for (const eye of head.eyeRoots) eye.aura.material.color.setHex(color);
+  }
+
+  function setFacing(direction) {
+    const sign = direction < 0 ? -1 : 1;
+    visualRoot.scale.x = sign;
   }
 
   root.userData.stickman = {
-    version: 3,
-    parts,
+    version: 4,
+    style: '2d-side-view',
     joints,
     sockets,
     materials,
     setElementMode,
-    dimensions: C,
-    hiddenJointNames: [
-      'headJoint',
-      'leftShoulderJoint', 'leftElbowJoint', 'leftWristJoint',
-      'rightShoulderJoint', 'rightElbowJoint', 'rightWristJoint',
-      'leftHipJoint', 'leftKneeJoint', 'leftAnkleJoint',
-      'rightHipJoint', 'rightKneeJoint', 'rightAnkleJoint'
-    ]
+    setFacing,
+    dimensions: C
   };
 
   return root;

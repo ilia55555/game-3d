@@ -1,8 +1,8 @@
 // File: stickman/src/core/scene.js
-// Role: Creates the renderer, camera, sky colors, fog, and neutral outdoor lighting.
-// Scope: Rendering infrastructure only; player follow-camera motion is handled by the controller.
-// Rule: Character construction, animation, combat, enemy AI, and level geometry stay elsewhere.
-// Goal: Remove the old red/orange mood and provide a bright readable 3D game environment.
+// Role: Creates the renderer, fixed side-view camera, fog, sky, and neutral outdoor lighting.
+// Scope: Rendering infrastructure only; horizontal follow motion is handled by the player controller.
+// Rule: Character sprites, animation, weapons, gameplay, enemies, and level geometry stay elsewhere.
+// Goal: Present a clean 2.5D side-scrolling game while preserving a fully three-dimensional environment.
 
 import * as THREE from 'three';
 
@@ -18,40 +18,41 @@ export function createScene(canvas) {
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.08;
+  renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x91c9e6);
-  scene.fog = new THREE.Fog(0x91c9e6, 28, 78);
+  scene.background = new THREE.Color(0xa7d4ea);
+  scene.fog = new THREE.Fog(0xa7d4ea, 22, 70);
 
   const camera = new THREE.PerspectiveCamera(
-    58,
-    window.innerWidth / window.innerHeight,
+    38,
+    window.innerWidth / Math.max(1, window.innerHeight),
     0.05,
-    160
+    180
   );
-  camera.position.set(5.4, 4.3, 8.5);
+  camera.position.set(0, 3.2, 12.5);
+  camera.lookAt(0, 2.0, 0);
 
-  const hemi = new THREE.HemisphereLight(0xd9f4ff, 0x355042, 2.0);
+  const hemi = new THREE.HemisphereLight(0xeaf8ff, 0x415941, 2.2);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xfff1cf, 3.0);
-  sun.position.set(-12, 18, 9);
+  const sun = new THREE.DirectionalLight(0xfff0cf, 3.1);
+  sun.position.set(-10, 18, 10);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -28;
-  sun.shadow.camera.right = 28;
-  sun.shadow.camera.top = 28;
-  sun.shadow.camera.bottom = -28;
+  sun.shadow.camera.left = -32;
+  sun.shadow.camera.right = 32;
+  sun.shadow.camera.top = 24;
+  sun.shadow.camera.bottom = -10;
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 70;
-  sun.shadow.bias = -0.00035;
+  sun.shadow.camera.far = 75;
+  sun.shadow.bias = -0.0003;
   scene.add(sun);
 
-  const fill = new THREE.DirectionalLight(0xaadfff, 0.8);
-  fill.position.set(12, 8, -14);
+  const fill = new THREE.DirectionalLight(0x9fdcff, 0.9);
+  fill.position.set(8, 7, 7);
   scene.add(fill);
 
   function resize() {

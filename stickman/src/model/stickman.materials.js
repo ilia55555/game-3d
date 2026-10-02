@@ -5,6 +5,7 @@
 // Goal: Make the character's visual identity editable from one small focused file.
 
 import * as THREE from 'three';
+import { STICKMAN_CONFIG } from './stickman.config.js';
 
 export function createStickmanMaterials() {
   const core = new THREE.MeshStandardMaterial({
@@ -20,7 +21,7 @@ export function createStickmanMaterials() {
   });
 
   const glow = new THREE.MeshBasicMaterial({
-    color: 0xff6a00,
+    color: STICKMAN_CONFIG.glowColor,
     transparent: true,
     opacity: 0.28,
     blending: THREE.AdditiveBlending,
@@ -29,7 +30,7 @@ export function createStickmanMaterials() {
   });
 
   const glowStrong = new THREE.MeshBasicMaterial({
-    color: 0xff8a16,
+    color: STICKMAN_CONFIG.glowStrongColor,
     transparent: true,
     opacity: 0.58,
     blending: THREE.AdditiveBlending,
@@ -38,7 +39,8 @@ export function createStickmanMaterials() {
   });
 
   const eyes = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
+    color: STICKMAN_CONFIG.eyeColor,
+    side: THREE.DoubleSide,
     toneMapped: false
   });
 

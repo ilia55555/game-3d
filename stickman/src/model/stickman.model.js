@@ -6,16 +6,7 @@
 
 import * as THREE from 'three';
 import { createStickmanMaterials } from './stickman.materials.js';
-
-const BODY = Object.freeze({
-  pelvisY: 1.68,
-  torsoLength: 1.05,
-  headRadius: 0.36,
-  upperArm: 0.68,
-  lowerArm: 0.64,
-  upperLeg: 0.78,
-  lowerLeg: 0.76
-});
+import { STICKMAN_CONFIG as C } from './stickman.config.js';
 
 function addGlowPair(parent, geometry, materials, {
   position = [0, 0, 0],
@@ -44,11 +35,10 @@ function addGlowPair(parent, geometry, materials, {
 
 function addJoint(parent, radius, y, materials, intensity = 1) {
   const geometry = new THREE.SphereGeometry(radius, 18, 12);
-  const pair = addGlowPair(parent, geometry, materials, {
+  return addGlowPair(parent, geometry, materials, {
     position: [0, y, 0],
     glowScale: [1.16 + intensity * 0.03, 1.16 + intensity * 0.03, 1.16 + intensity * 0.03]
   });
-  return pair;
 }
 
 function createSegment(name, length, radius, materials) {
@@ -60,18 +50,16 @@ function createSegment(name, length, radius, materials) {
     position: [0, -length * 0.5, 0],
     glowScale: [1.18, 1.02, 1.18]
   });
-
   addJoint(pivot, radius * 1.04, -length, materials, 0.8);
+
   return pivot;
 }
 
 function createHand(name, materials) {
   const hand = new THREE.Group();
   hand.name = name;
-  const geometry = new THREE.SphereGeometry(0.105, 18, 12);
-  addGlowPair(hand, geometry, materials, {
-    glowScale: [1.22, 1.22, 1.22]
-  });
+  const geometry = new THREE.SphereGeometry(C.handRadius, 18, 12);
+  addGlowPair(hand, geometry, materials, { glowScale: [1.22, 1.22, 1.22] });
   return hand;
 }
 
@@ -79,7 +67,7 @@ function createFoot(name, side, materials) {
   const foot = new THREE.Group();
   foot.name = name;
 
-  const geometry = new THREE.SphereGeometry(0.13, 18, 12);
+  const geometry = new THREE.SphereGeometry(C.footRadius, 18, 12);
   const pair = addGlowPair(foot, geometry, materials, {
     position: [side * 0.015, -0.045, 0.10],
     glowScale: [1.18, 1.15, 1.45]
@@ -104,13 +92,11 @@ function createHead(materials) {
   const head = new THREE.Group();
   head.name = 'head';
 
-  const sphere = new THREE.SphereGeometry(BODY.headRadius, 28, 20);
-  addGlowPair(head, sphere, materials, {
-    glowScale: [1.12, 1.12, 1.12]
-  });
+  const sphere = new THREE.SphereGeometry(C.headRadius, 28, 20);
+  addGlowPair(head, sphere, materials, { glowScale: [1.12, 1.12, 1.12] });
 
   const haloRing = new THREE.Mesh(
-    new THREE.TorusGeometry(BODY.headRadius * 1.03, 0.038, 10, 48),
+    new THREE.TorusGeometry(C.headRadius * 1.03, 0.038, 10, 48),
     materials.glowStrong
   );
   haloRing.position.z = 0.012;
@@ -119,7 +105,7 @@ function createHead(materials) {
 
   for (const side of [-1, 1]) {
     const eyeRoot = new THREE.Group();
-    eyeRoot.position.set(side * 0.105, 0.035, BODY.headRadius * 0.985);
+    eyeRoot.position.set(side * 0.105, 0.035, C.headRadius * 0.985);
 
     const glowEye = new THREE.Mesh(createEyeGeometry(side), materials.eyeGlow);
     glowEye.scale.setScalar(1.24);
@@ -138,43 +124,49 @@ function createTorso(materials) {
   const torso = new THREE.Group();
   torso.name = 'torso';
 
-  const geometry = new THREE.CylinderGeometry(0.20, 0.16, BODY.torsoLength, 18, 1, false);
+  const geometry = new THREE.CylinderGeometry(
+    C.torsoTopRadius,
+    C.torsoBottomRadius,
+    C.torsoLength,
+    18,
+    1,
+    false
+  );
   addGlowPair(torso, geometry, materials, {
-    position: [0, BODY.torsoLength * 0.5, 0],
+    position: [0, C.torsoLength * 0.5, 0],
     glowScale: [1.19, 1.02, 1.19]
   });
 
-  addJoint(torso, 0.17, 0, materials, 0.4);
-  addJoint(torso, 0.215, BODY.torsoLength * 0.80, materials, 0.6);
-  addJoint(torso, 0.155, BODY.torsoLength, materials, 0.5);
+  addJoint(torso, C.torsoBottomRadius * 1.06, 0, materials, 0.4);
+  addJoint(torso, C.torsoTopRadius * 1.08, C.torsoLength * 0.80, materials, 0.6);
+  addJoint(torso, C.torsoTopRadius * 0.78, C.torsoLength, materials, 0.5);
   return torso;
 }
 
 function createArm(side, materials) {
   const sideName = side < 0 ? 'left' : 'right';
-  const upper = createSegment(`${sideName}UpperArm`, BODY.upperArm, 0.095, materials);
-  const lower = createSegment(`${sideName}LowerArm`, BODY.lowerArm, 0.086, materials);
+  const upper = createSegment(`${sideName}UpperArm`, C.upperArm, C.upperArmRadius, materials);
+  const lower = createSegment(`${sideName}LowerArm`, C.lowerArm, C.lowerArmRadius, materials);
   const hand = createHand(`${sideName}Hand`, materials);
 
-  lower.position.y = -BODY.upperArm;
-  hand.position.y = -BODY.lowerArm;
+  lower.position.y = -C.upperArm;
+  hand.position.y = -C.lowerArm;
   upper.add(lower);
   lower.add(hand);
 
   upper.rotation.z = side * -0.11;
   lower.rotation.x = -0.10;
-
   return { root: upper, upper, lower, hand };
 }
 
 function createLeg(side, materials) {
   const sideName = side < 0 ? 'left' : 'right';
-  const upper = createSegment(`${sideName}UpperLeg`, BODY.upperLeg, 0.112, materials);
-  const lower = createSegment(`${sideName}LowerLeg`, BODY.lowerLeg, 0.098, materials);
+  const upper = createSegment(`${sideName}UpperLeg`, C.upperLeg, C.upperLegRadius, materials);
+  const lower = createSegment(`${sideName}LowerLeg`, C.lowerLeg, C.lowerLegRadius, materials);
   const foot = createFoot(`${sideName}Foot`, side, materials);
 
-  lower.position.y = -BODY.upperLeg;
-  foot.position.y = -BODY.lowerLeg;
+  lower.position.y = -C.upperLeg;
+  foot.position.y = -C.lowerLeg;
   upper.add(lower);
   lower.add(foot);
 
@@ -192,25 +184,28 @@ export function createStickmanModel() {
   const materials = createStickmanMaterials();
   const root = new THREE.Group();
   root.name = 'stickmanRoot';
-  root.position.y = BODY.pelvisY;
+  root.position.y = C.pelvisY;
 
   const torso = createTorso(materials);
   root.add(torso);
 
+  const headY = C.torsoLength + C.headGap;
+  const shoulderY = C.torsoLength * C.shoulderYFactor;
+
   const head = createHead(materials);
-  head.position.set(0, BODY.torsoLength + 0.37, 0);
+  head.position.set(0, headY, 0);
   root.add(head);
 
   const leftArm = createArm(-1, materials);
   const rightArm = createArm(1, materials);
-  leftArm.root.position.set(-0.36, BODY.torsoLength * 0.84, 0);
-  rightArm.root.position.set(0.36, BODY.torsoLength * 0.84, 0);
+  leftArm.root.position.set(-C.shoulderX, shoulderY, 0);
+  rightArm.root.position.set(C.shoulderX, shoulderY, 0);
   root.add(leftArm.root, rightArm.root);
 
   const leftLeg = createLeg(-1, materials);
   const rightLeg = createLeg(1, materials);
-  leftLeg.root.position.set(-0.15, 0, 0);
-  rightLeg.root.position.set(0.15, 0, 0);
+  leftLeg.root.position.set(-C.hipX, 0, 0);
+  rightLeg.root.position.set(C.hipX, 0, 0);
   root.add(leftLeg.root, rightLeg.root);
 
   const parts = {
@@ -240,11 +235,11 @@ export function createStickmanModel() {
   };
 
   const sockets = {
-    head: makeSocket('headSocket', new THREE.Vector3(0, BODY.torsoLength + 0.37, 0)),
-    leftArm: makeSocket('leftShoulderSocket', new THREE.Vector3(-0.36, BODY.torsoLength * 0.84, 0)),
-    rightArm: makeSocket('rightShoulderSocket', new THREE.Vector3(0.36, BODY.torsoLength * 0.84, 0)),
-    leftLeg: makeSocket('leftHipSocket', new THREE.Vector3(-0.15, 0, 0)),
-    rightLeg: makeSocket('rightHipSocket', new THREE.Vector3(0.15, 0, 0))
+    head: makeSocket('headSocket', new THREE.Vector3(0, headY, 0)),
+    leftArm: makeSocket('leftShoulderSocket', new THREE.Vector3(-C.shoulderX, shoulderY, 0)),
+    rightArm: makeSocket('rightShoulderSocket', new THREE.Vector3(C.shoulderX, shoulderY, 0)),
+    leftLeg: makeSocket('leftHipSocket', new THREE.Vector3(-C.hipX, 0, 0)),
+    rightLeg: makeSocket('rightHipSocket', new THREE.Vector3(C.hipX, 0, 0))
   };
   Object.values(sockets).forEach(socket => root.add(socket));
 
@@ -278,7 +273,7 @@ export function createStickmanModel() {
     setPartVisible,
     togglePart,
     resetVisibility,
-    dimensions: BODY
+    dimensions: C
   };
 
   return root;

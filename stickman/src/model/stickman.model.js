@@ -230,7 +230,8 @@ export function createStickmanModel() {
 
   function setFacing(direction) {
     const sign = direction < 0 ? -1 : 1;
-    visualRoot.scale.x = sign;
+    const magnitude = Math.max(0.001, Math.abs(visualRoot.scale.x));
+    visualRoot.scale.x = sign * magnitude;
   }
 
   root.userData.stickman = {

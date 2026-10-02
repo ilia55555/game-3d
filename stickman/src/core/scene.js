@@ -1,11 +1,10 @@
 // File: stickman/src/core/scene.js
-// Role: Creates the renderer, camera, lighting, and orbit controls.
-// Scope: Rendering infrastructure only; it knows nothing about the stickman model internals.
-// Rule: Character construction, animation, gameplay, enemies, and level rules stay elsewhere.
-// Goal: Let rendering settings change independently from every gameplay-facing system.
+// Role: Creates the renderer, camera, sky colors, fog, and neutral outdoor lighting.
+// Scope: Rendering infrastructure only; player follow-camera motion is handled by the controller.
+// Rule: Character construction, animation, combat, enemy AI, and level geometry stay elsewhere.
+// Goal: Remove the old red/orange mood and provide a bright readable 3D game environment.
 
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({
@@ -19,52 +18,41 @@ export function createScene(canvas) {
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.08;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x070403);
-  scene.fog = new THREE.FogExp2(0x080402, 0.034);
+  scene.background = new THREE.Color(0x91c9e6);
+  scene.fog = new THREE.Fog(0x91c9e6, 28, 78);
 
   const camera = new THREE.PerspectiveCamera(
-    42,
+    58,
     window.innerWidth / window.innerHeight,
     0.05,
-    120
+    160
   );
-  camera.position.set(4.8, 3.1, 7.4);
+  camera.position.set(5.4, 4.3, 8.5);
 
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(0, 1.75, 0);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.065;
-  controls.minDistance = 3.4;
-  controls.maxDistance = 13;
-  controls.minPolarAngle = Math.PI * 0.16;
-  controls.maxPolarAngle = Math.PI * 0.76;
-  controls.enablePan = false;
-
-  const hemi = new THREE.HemisphereLight(0xffd1a0, 0x190b06, 1.1);
+  const hemi = new THREE.HemisphereLight(0xd9f4ff, 0x355042, 2.0);
   scene.add(hemi);
 
-  const key = new THREE.DirectionalLight(0xffad67, 2.1);
-  key.position.set(4, 8, 5);
-  key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  key.shadow.camera.left = -7;
-  key.shadow.camera.right = 7;
-  key.shadow.camera.top = 8;
-  key.shadow.camera.bottom = -3;
-  scene.add(key);
+  const sun = new THREE.DirectionalLight(0xfff1cf, 3.0);
+  sun.position.set(-12, 18, 9);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -28;
+  sun.shadow.camera.right = 28;
+  sun.shadow.camera.top = 28;
+  sun.shadow.camera.bottom = -28;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 70;
+  sun.shadow.bias = -0.00035;
+  scene.add(sun);
 
-  const rim = new THREE.PointLight(0xff5a00, 18, 12, 2);
-  rim.position.set(-3.4, 3.7, -2.4);
-  scene.add(rim);
-
-  const front = new THREE.PointLight(0xffb14d, 8, 9, 2);
-  front.position.set(0, 2.3, 5.2);
-  scene.add(front);
+  const fill = new THREE.DirectionalLight(0xaadfff, 0.8);
+  fill.position.set(12, 8, -14);
+  scene.add(fill);
 
   function resize() {
     const width = window.innerWidth;
@@ -81,10 +69,9 @@ export function createScene(canvas) {
     scene,
     camera,
     renderer,
-    controls,
+    sun,
     dispose() {
       window.removeEventListener('resize', resize);
-      controls.dispose();
       renderer.dispose();
     }
   };

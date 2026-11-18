@@ -1,3 +1,335 @@
-<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>Game Launcher</title>
-<style>body{margin:0;min-height:100vh;background:#111;color:#eee;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center}a{display:block;margin:8px;padding:14px 28px;background:#2d3a1e;color:#fff;text-decoration:none;border-radius:6px}a:hover{background:#4a5a2a}</style></head>
-<body><h1>لانچر تست‌ها</h1><a href="tests/three-fps.html">3D FPS (Three.js)</a><a href="tests/svg-fps.html">SVG FPS Test</a></body></html>
+<!doctype html>
+<html lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Abandoned Grounds</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:sans-serif}
+  canvas{display:block;cursor:grab}
+  canvas:active{cursor:grabbing}
+  #hint{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);color:#fff;background:#0008;padding:6px 12px;border-radius:6px;font-size:13px;pointer-events:none}
+  #cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#fff;box-shadow:0 0 2px #000;pointer-events:none}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+</head>
+<body>
+<div id="cross"></div>
+<div id="hint">WASD حرکت · Shift دویدن · Space پرش · کشیدن ماوس برای چرخش</div>
+<script type="module">
+import * as THREE from 'three';
+
+// ---------- renderer / scene ----------
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.add(new THREE.AmbientLight(0xfff0dd,0.25));
+const SKY = 0xd8c9a8;
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 40, 150);
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.05, 400);
+scene.add(camera);
+
+// ---------- lights: low warm sun → long shadows ----------
+scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x6a5a40, 1.0));
+const sun = new THREE.DirectionalLight(0xffd9a0, 2.2);
+sun.position.set(-70, 26, 50); // low angle
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096,4096);
+const sc = sun.shadow.camera; sc.left=-90; sc.right=90; sc.top=90; sc.bottom=-90; sc.near=1; sc.far=260;
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
+scene.add(sun); scene.add(sun.target);
+
+// ---------- procedural textures ----------
+function canvasTex(size, draw, repeat=1){
+  const c=document.createElement('canvas'); c.width=c.height=size;
+  const g=c.getContext('2d'); draw(g,size);
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(repeat,repeat);
+  t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=8;
+  return t;
+}
+const rnd=(a,b)=>a+Math.random()*(b-a);
+function noise(g,s,base,n,var_,sz=[1,4]){
+  g.fillStyle=base; g.fillRect(0,0,s,s);
+  for(let i=0;i<n;i++){const v=rnd(-var_,var_);g.fillStyle=`rgba(${v>0?255:0},${v>0?255:0},${v>0?255:0},${Math.abs(v)})`;const w=rnd(...sz);g.fillRect(rnd(0,s),rnd(0,s),w,w);}
+}
+const texGrass=canvasTex(256,(g,s)=>{noise(g,s,'#5d6b34',9000,0.12);for(let i=0;i<40;i++){g.fillStyle=`rgba(110,90,50,${rnd(.1,.3)})`;g.beginPath();g.arc(rnd(0,s),rnd(0,s),rnd(6,20),0,7);g.fill();}},60);
+const texConcrete=canvasTex(256,(g,s)=>{noise(g,s,'#8a867d',7000,0.1);g.strokeStyle='rgba(40,35,30,.5)';for(let i=0;i<6;i++){g.beginPath();let x=rnd(0,s),y=rnd(0,s);g.moveTo(x,y);for(let k=0;k<6;k++){x+=rnd(-20,20);y+=rnd(5,25);g.lineTo(x,y);}g.stroke();}for(let i=0;i<10;i++){g.fillStyle=`rgba(50,60,30,${rnd(.1,.25)})`;g.fillRect(rnd(0,s),s-rnd(0,60),rnd(10,60),rnd(10,60));}});
+const texStone=canvasTex(256,(g,s)=>{g.fillStyle='#4a463f';g.fillRect(0,0,s,s);const h=32;for(let r=0;r<s/h;r++){const off=(r%2)*24;for(let x=-off;x<s;x+=48){const l=rnd(95,140);g.fillStyle=`rgb(${l},${l-5},${l-14})`;g.fillRect(x+2,r*h+2,44,h-4);}}noise(g,s,'rgba(0,0,0,0)',3000,0.12);});
+const texWood=canvasTex(256,(g,s)=>{for(let x=0;x<s;x+=32){const l=rnd(70,100);g.fillStyle=`rgb(${l+30},${l},${l-30})`;g.fillRect(x,0,32,s);g.fillStyle='rgba(0,0,0,.5)';g.fillRect(x,0,2,s);for(let i=0;i<30;i++){g.fillStyle=`rgba(40,25,10,${rnd(.1,.3)})`;g.fillRect(x+rnd(2,30),rnd(0,s),1,rnd(10,60));}}});
+const texRust=canvasTex(256,(g,s)=>{noise(g,s,'#b8862a',6000,0.15);for(let i=0;i<60;i++){g.fillStyle=`rgba(${rnd(90,140)},${rnd(40,60)},20,${rnd(.2,.6)})`;g.beginPath();g.arc(rnd(0,s),rnd(0,s),rnd(3,18),0,7);g.fill();}});
+const texBark=canvasTex(128,(g,s)=>{g.fillStyle='#3b2b1c';g.fillRect(0,0,s,s);for(let i=0;i<200;i++){g.fillStyle=`rgba(${rnd(60,100)},${rnd(45,70)},30,.6)`;g.fillRect(rnd(0,s),rnd(0,s),rnd(1,3),rnd(8,30));}});
+const texLeaf=canvasTex(128,(g,s)=>{noise(g,s,'#2f4a22',3000,0.18,[2,6]);});
+const texRoof=canvasTex(128,(g,s)=>{g.fillStyle='#4a2b20';g.fillRect(0,0,s,s);for(let y=0;y<s;y+=12)for(let x=(y/12%2)*8;x<s;x+=16){const l=rnd(60,90);g.fillStyle=`rgb(${l},${l*.55},${l*.4})`;g.fillRect(x+1,y+1,14,10);}});
+
+const M = {
+  concrete:new THREE.MeshStandardMaterial({map:texConcrete,roughness:.95}),
+  stone:new THREE.MeshStandardMaterial({map:texStone,roughness:.9}),
+  wood:new THREE.MeshStandardMaterial({map:texWood,roughness:.85}),
+  rust:new THREE.MeshStandardMaterial({map:texRust,roughness:.7,metalness:.4}),
+  bark:new THREE.MeshStandardMaterial({map:texBark,roughness:1}),
+  leaf:new THREE.MeshStandardMaterial({map:texLeaf,roughness:.9,flatShading:true}),
+  roof:new THREE.MeshStandardMaterial({map:texRoof,roughness:.9}),
+  dark:new THREE.MeshStandardMaterial({color:0x111111,roughness:.6}),
+};
+
+// ---------- colliders ----------
+const colliders=[]; // {min,max} boxes (THREE.Box3)
+function shadowed(m){m.castShadow=m.receiveShadow=true;return m;}
+function box(w,h,d,x,y,z,mat,{col=true,ry=0,uv=1}={}){
+  const geo=new THREE.BoxGeometry(w,h,d);
+  if(uv!==1){const a=geo.attributes.uv;for(let i=0;i<a.count;i++)a.setXY(i,a.getX(i)*uv,a.getY(i)*uv);}
+  const m=shadowed(new THREE.Mesh(geo,mat)); m.position.set(x,y,z); m.rotation.y=ry; scene.add(m);
+  if(col){m.updateMatrixWorld();colliders.push(new THREE.Box3().setFromObject(m));}
+  return m;
+}
+
+// ground
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(400,400),new THREE.MeshStandardMaterial({map:texGrass,roughness:1}));
+ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+
+// ---------- abandoned building (center) ----------
+(function(){
+  const cx=0,cz=0,W=16,D=12,H=3.4,t=.4;
+  for(let f=0;f<2;f++){
+    const y=f*H;
+    // front wall with door (f=0) and windows
+    const segs=f===0?[[-W/2,-1.2],[1.2,W/2]]:[[-W/2,-5],[-3,-1],[1,3],[5,W/2]];
+    for(const [a,b] of segs) box(b-a,H,t,cx+(a+b)/2,y+H/2,cz+D/2,M.concrete,{uv:2});
+    if(f===1) for(const x of [-4,0,4]){box(2,1,t,cx+x,y+.5,cz+D/2,M.concrete);box(2,.6,t,cx+x,y+H-.3,cz+D/2,M.concrete);}
+    if(f===0) box(2.4,.8,t,cx,y+H-.4,cz+D/2,M.concrete);
+    // back wall (broken on floor 2)
+    box(W,f===1?1.6:H,t,cx,y+(f===1?.8:H/2),cz-D/2,M.concrete,{uv:2});
+    // side walls with windows
+    for(const s of [-1,1]){
+      box(t,H,4,cx+s*W/2,y+H/2,cz-4,M.concrete); box(t,H,4,cx+s*W/2,y+H/2,cz+4,M.concrete);
+      box(t,1,4,cx+s*W/2,y+.5,cz,M.concrete); box(t,.6,4,cx+s*W/2,y+H-.3,cz,M.concrete);
+    }
+  }
+  // floor 2 slab with stair hole; partial roof
+  box(W,.3,D-4,cx,H,cz+2,M.concrete,{uv:2});
+  box(W-5,.3,4,cx+2.5,H,cz-4,M.concrete);
+  box(W*.6,.3,D*.7,cx-3,2*H,cz+1,M.concrete);
+  // stairs (steps)
+  for(let i=0;i<12;i++) box(4.5,.3,.34,cx-W/2+2.6,.15+i*.29,cz-D/2+.6+i*.34,M.concrete,{col:false});
+  // ramp collider for stairs handled by step-up
+  for(let i=0;i<12;i++){colliders.push(new THREE.Box3(new THREE.Vector3(cx-W/2+.35,0,cz-D/2+.43+i*.34),new THREE.Vector3(cx-W/2+4.85,.3+i*.29,cz-D/2+.77+i*.34)));}
+  // rubble
+  for(let i=0;i<14;i++) box(rnd(.3,1),rnd(.2,.6),rnd(.3,1),cx+rnd(-W/2+5,W/2-1),.15,cz+rnd(-D/2+1,D/2-1),M.concrete,{col:false,ry:rnd(0,3)});
+})();
+
+// ---------- stone tower (north) ----------
+(function(){
+  const x=-6,z=-45,R=4,H=16;
+  const tw=shadowed(new THREE.Mesh(new THREE.CylinderGeometry(R,R*1.1,H,24,1,true),M.stone));
+  texStone.repeat.set(1,1); tw.position.set(x,H/2,z); scene.add(tw);
+  const inner=shadowed(new THREE.Mesh(new THREE.CylinderGeometry(R-.01,R*1.1-.01,H,24,1,true),new THREE.MeshStandardMaterial({map:texStone,side:THREE.BackSide})));
+  inner.position.copy(tw.position); scene.add(inner);
+  colliders.push(new THREE.Box3(new THREE.Vector3(x-R,0,z-R),new THREE.Vector3(x+R,H,z+R)));
+  // top platform + crenellations
+  box(R*2+1.2,.6,R*2+1.2,x,H+.3,z,M.stone,{col:false});
+  const top=shadowed(new THREE.Mesh(new THREE.CylinderGeometry(R+.6,R+.6,.6,24),M.stone)); top.position.set(x,H+.3,z); scene.add(top);
+  for(let i=0;i<12;i++){const a=i/12*Math.PI*2;box(1,1.2,.6,x+Math.cos(a)*(R+.3),H+1.2,z+Math.sin(a)*(R+.3),M.stone,{col:false,ry:-a+Math.PI/2});}
+  // spiral outer steps
+  const N=56;
+  for(let i=0;i<N;i++){
+    const a=i/N*Math.PI*2*1.6, y=.2+i*(H/N);
+    const px=x+Math.cos(a)*(R+.9), pz=z+Math.sin(a)*(R+.9);
+    box(1.8,.3,1.1,px,y,pz,M.stone,{col:false,ry:-a});
+    colliders.push(new THREE.Box3(new THREE.Vector3(px-.7,0,pz-.7),new THREE.Vector3(px+.7,y+.15,pz+.7)));
+  }
+  colliders.push(new THREE.Box3(new THREE.Vector3(x-R-.6,0,z-R-.6),new THREE.Vector3(x+R+.6,H+.6,z+R+.6)));
+})();
+
+// ---------- cabin (west) ----------
+(function(){
+  const x=-40,z=6,W=6,D=5,H=2.8,t=.25;
+  box(W,H,t,x,H/2,z-D/2,M.wood);
+  box(t,H,D,x-W/2,H/2,z,M.wood); box(t,H,D,x+W/2,H/2,z,M.wood);
+  box(2,H,t,x-2,H/2,z+D/2,M.wood); box(2,H,t,x+2,H/2,z+D/2,M.wood); box(2,.6,t,x,H-.3,z+D/2,M.wood);
+  box(W,.15,D,x,.07,z,M.wood,{col:false});
+  const roof=shadowed(new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(W,D)/2+.6,2.4,4),M.roof));
+  roof.position.set(x,H+1.2,z); roof.rotation.y=Math.PI/4; roof.scale.z=D/W; scene.add(roof);
+  box(.6,1.6,.6,x+1.8,H+1.5,z-1,M.stone,{col:false}); // chimney
+  for(let i=0;i<4;i++) box(.5,.5,1.6,x-W/2-1.2,.25+i*.5*(i<2?1:0),z+rnd(-2,2),M.wood,{ry:rnd(-.3,.3)}); // logs
+})();
+
+// ---------- crane (east) ----------
+(function(){
+  const x=38,z=-8,H=26;
+  // lattice mast
+  const L=1.8;
+  for(const [dx,dz] of [[-1,-1],[1,-1],[1,1],[-1,1]]) box(.18,H,.18,x+dx*L/2,H/2,z+dz*L/2,M.rust,{col:false});
+  for(let y=1.5;y<H;y+=2){
+    for(const r of [0,Math.PI/2]){
+      for(const s of [-1,1]){
+        const m=box(.1,2.7,.1,x+(r?s*L/2:0),y,z+(r?0:s*L/2),M.rust,{col:false});
+        m.rotation.set(r?Math.PI/4*s:0,0,r?0:Math.PI/4*s);
+      }
+    }
+    box(L,.1,.1,x,y-1,z-L/2,M.rust,{col:false}); box(L,.1,.1,x,y-1,z+L/2,M.rust,{col:false});
+    box(.1,.1,L,x-L/2,y-1,z,M.rust,{col:false}); box(.1,.1,L,x+L/2,y-1,z,M.rust,{col:false});
+  }
+  colliders.push(new THREE.Box3(new THREE.Vector3(x-L/2,0,z-L/2),new THREE.Vector3(x+L/2,H,z+L/2)));
+  box(3,1.2,3,x,.6,z,M.concrete); // base
+  // cab + jib + counter jib
+  box(2.2,2,2.2,x,H+1,z,M.rust,{col:false});
+  box(28,.8,1,x-12,H+2.4,z,M.rust,{col:false});
+  box(9,.8,1,x+5.5,H+2.4,z,M.rust,{col:false});
+  box(2.5,2,1.6,x+9,H+1.3,z,M.concrete,{col:false});
+  const tip=box(.4,4,.4,x,H+4.8,z,M.rust,{col:false});
+  // cable + hook + hanging load
+  box(.05,14,.05,x-20,H+2-7,z,M.dark,{col:false});
+  box(2.5,1.2,1.5,x-20,H-14.6,z,M.wood,{col:false});
+})();
+
+// ---------- ruins (south) ----------
+(function(){
+  const x=8,z=40;
+  const walls=[[-8,0,10,3.5],[-3,-5,.7,2.2],[4,3,6,1.4],[-10,6,.7,4],[9,-4,.7,2.8],[0,8,8,.9]];
+  for(const [dx,dz,w,h] of walls){
+    const horiz=w>1;
+    const n=Math.max(1,Math.round((horiz?w:4)/1.2));
+    for(let i=0;i<n;i++){ // broken top profile
+      const hh=h*rnd(.4,1);
+      if(horiz) box(w/n,hh,.8,x+dx-w/2+(i+.5)*w/n,hh/2,z+dz,M.stone);
+      else box(.8,hh,4/n,x+dx,hh/2,z+dz-2+(i+.5)*4/n,M.stone);
+    }
+  }
+  // columns, one fallen
+  for(const [dx,dz,h] of [[-4,2,5],[-1,2,3.2],[2,2,4.4],[5,2,1.2]]){
+    const c=shadowed(new THREE.Mesh(new THREE.CylinderGeometry(.45,.5,h,12),M.stone)); c.position.set(x+dx,h/2,z+dz); scene.add(c);
+    colliders.push(new THREE.Box3(new THREE.Vector3(x+dx-.5,0,z+dz-.5),new THREE.Vector3(x+dx+.5,h,z+dz+.5)));
+  }
+  const fallen=shadowed(new THREE.Mesh(new THREE.CylinderGeometry(.45,.5,5,12),M.stone));
+  fallen.position.set(x+4,.45,z+-1.5); fallen.rotation.set(0,.4,Math.PI/2); scene.add(fallen);
+  colliders.push(new THREE.Box3().setFromObject(fallen));
+  for(let i=0;i<25;i++) box(rnd(.3,.9),rnd(.2,.5),rnd(.3,.9),x+rnd(-12,12),.15,z+rnd(-7,10),M.stone,{col:false,ry:rnd(0,3)});
+})();
+
+// ---------- trees ----------
+(function(){
+  const avoid=[[0,0,14],[-6,-45,9],[-40,6,7],[38,-8,6],[8,40,15],[0,25,3]];
+  let placed=0;
+  while(placed<70){
+    const x=rnd(-95,95),z=rnd(-95,95);
+    if(avoid.some(([ax,az,r])=>Math.hypot(x-ax,z-az)<r)) continue;
+    const s=rnd(.8,1.5), h=4*s;
+    const tr=shadowed(new THREE.Mesh(new THREE.CylinderGeometry(.18*s,.3*s,h,7),M.bark)); tr.position.set(x,h/2,z); scene.add(tr);
+    const pine=Math.random()<.5;
+    for(let k=0;k<(pine?3:2);k++){
+      const geo=pine?new THREE.ConeGeometry((2-k*.5)*s,2.6*s,8):new THREE.IcosahedronGeometry((1.8-k*.4)*s,0);
+      const l=shadowed(new THREE.Mesh(geo,M.leaf)); l.position.set(x+(pine?0:rnd(-.4,.4)),h+(pine?k*1.3*s-.3:k*1.2*s),z); l.rotation.y=rnd(0,3); scene.add(l);
+    }
+    colliders.push(new THREE.Box3(new THREE.Vector3(x-.35*s,0,z-.35*s),new THREE.Vector3(x+.35*s,h,z+.35*s)));
+    placed++;
+  }
+  // map boundary
+  colliders.push(new THREE.Box3(new THREE.Vector3(-101,0,-101),new THREE.Vector3(101,50,-100)));
+  colliders.push(new THREE.Box3(new THREE.Vector3(-101,0,100),new THREE.Vector3(101,50,101)));
+  colliders.push(new THREE.Box3(new THREE.Vector3(-101,0,-101),new THREE.Vector3(-100,50,101)));
+  colliders.push(new THREE.Box3(new THREE.Vector3(100,0,-101),new THREE.Vector3(101,50,101)));
+})();
+
+// ---------- gun (viewmodel) ----------
+const gun=new THREE.Group();
+const gunMetal=new THREE.MeshStandardMaterial({color:0x2a2c2e,roughness:.4,metalness:.5});
+const gunWood=new THREE.MeshStandardMaterial({map:texWood,roughness:.7});
+const part=(w,h,d,x,y,z,m,rx=0)=>{const p=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);p.position.set(x,y,z);p.rotation.x=rx;gun.add(p);return p;};
+part(.07,.09,.42,0,0,0,gunMetal);           // receiver
+part(.03,.03,.45,0,.015,-.4,gunMetal);       // barrel
+part(.05,.05,.22,0,-.01,-.3,gunWood);        // handguard
+part(.05,.14,.06,0,-.1,.0,gunMetal,.35);     // magazine
+part(.045,.11,.05,0,-.09,.15,gunWood,-.3);   // grip
+part(.06,.08,.22,0,-.02,.3,gunWood);         // stock
+part(.02,.04,.03,0,.065,-.15,gunMetal);      // sight
+gun.position.set(.22,-.2,-.45);gun.scale.setScalar(.75);
+gun.traverse(o=>{if(o.isMesh)o.castShadow=false;});
+camera.add(gun);
+
+// ---------- player ----------
+const player={pos:new THREE.Vector3(0,0,22),vel:new THREE.Vector3(),yaw:0,pitch:0,onGround:true,R:.35,H:1.7};
+const keys={};
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space')e.preventDefault();});
+addEventListener('keyup',e=>keys[e.code]=false);
+let dragging=false;
+renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;renderer.domElement.setPointerCapture(e.pointerId);});
+addEventListener('pointerup',()=>dragging=false);
+addEventListener('pointermove',e=>{
+  if(!dragging)return;
+  player.yaw-=e.movementX*.004; player.pitch-=e.movementY*.004;
+  player.pitch=Math.max(-1.45,Math.min(1.45,player.pitch));
+});
+
+const pbox=new THREE.Box3();
+function hits(p){
+  pbox.min.set(p.x-player.R,p.y+.05,p.z-player.R); pbox.max.set(p.x+player.R,p.y+player.H,p.z+player.R);
+  for(const c of colliders) if(c.intersectsBox(pbox)) return c;
+  return null;
+}
+function moveAxis(axis,d){
+  if(!d)return;
+  const p=player.pos; p[axis]+=d;
+  const c=hits(p);
+  if(c){
+    // step up small ledges
+    const step=c.max.y-p.y;
+    if(step>0&&step<=.45&&player.onGround){const oy=p.y;p.y=c.max.y+.001;if(!hits(p))return;p.y=oy;}
+    p[axis]-=d;
+  }
+}
+function groundHeight(p){
+  let gy=0;
+  for(const c of colliders){
+    if(p.x+player.R>c.min.x&&p.x-player.R<c.max.x&&p.z+player.R>c.min.z&&p.z-player.R<c.max.z&&c.max.y<=p.y+.5&&c.max.y>gy) gy=c.max.y;
+  }
+  return gy;
+}
+
+// ---------- loop ----------
+const clock=new THREE.Clock(); let bob=0;
+const fwd=new THREE.Vector3(),right=new THREE.Vector3();
+function tick(){
+  const dt=Math.min(clock.getDelta(),.05);
+  const speed=keys.ShiftLeft||keys.ShiftRight?8.5:5;
+  fwd.set(-Math.sin(player.yaw),0,-Math.cos(player.yaw)); right.set(-fwd.z,0,fwd.x);
+  const wish=new THREE.Vector3();
+  if(keys.KeyW)wish.add(fwd); if(keys.KeyS)wish.sub(fwd); if(keys.KeyD)wish.add(right); if(keys.KeyA)wish.sub(right);
+  if(wish.lengthSq())wish.normalize().multiplyScalar(speed);
+  const k=player.onGround?12:3;
+  player.vel.x+=(wish.x-player.vel.x)*Math.min(1,k*dt); player.vel.z+=(wish.z-player.vel.z)*Math.min(1,k*dt);
+  if(keys.Space&&player.onGround){player.vel.y=6;player.onGround=false;}
+  player.vel.y-=18*dt;
+  moveAxis('x',player.vel.x*dt); moveAxis('z',player.vel.z*dt);
+  const gy=groundHeight(player.pos);
+  player.pos.y+=player.vel.y*dt;
+  if(player.vel.y>0&&hits(player.pos)){player.pos.y-=player.vel.y*dt;player.vel.y=0;}
+  if(player.pos.y<=gy){player.pos.y=gy;player.vel.y=0;player.onGround=true;} else if(player.pos.y>gy+.05) player.onGround=false;
+
+  const hs=Math.hypot(player.vel.x,player.vel.z);
+  bob+=hs*dt*1.6;
+  const by=player.onGround?Math.sin(bob*2)*.04*Math.min(1,hs/5):0;
+  camera.position.set(player.pos.x,player.pos.y+1.6+by,player.pos.z);
+  camera.rotation.set(player.pitch,player.yaw,0,'YXZ');
+  gun.position.x=.22+Math.cos(bob)*.012*Math.min(1,hs/5);
+  gun.position.y=-.2+Math.abs(Math.sin(bob))*.012*Math.min(1,hs/5);
+
+  sun.target.position.set(player.pos.x,0,player.pos.z);
+  sun.position.set(player.pos.x-70,26,player.pos.z+50);
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+tick();
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>

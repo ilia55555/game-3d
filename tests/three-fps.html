@@ -1,99 +1,204 @@
 <!DOCTYPE html>
 <html lang="fa"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Three FPS Test</title>
 <style>html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:sans-serif}
-#hud{position:fixed;left:20px;bottom:16px;color:#fff;font-size:20px;text-shadow:0 0 4px #000}
+#hud{position:fixed;left:20px;bottom:16px;color:#fff;font-size:20px;text-shadow:0 0 4px #000;white-space:pre}
 #ch{position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px;pointer-events:none}
 #ch:before,#ch:after{content:"";position:absolute;background:#0f0}#ch:before{left:9px;top:0;width:2px;height:20px}#ch:after{top:9px;left:0;height:2px;width:20px}
-#msg{position:fixed;top:30%;width:100%;text-align:center;color:#f44;font-size:42px;font-weight:bold}
-#start{position:fixed;inset:0;background:rgba(0,0,0,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;text-align:center}
+#msg{position:fixed;top:30%;width:100%;text-align:center;color:#f44;font-size:42px;font-weight:bold;text-shadow:0 0 6px #000}
+#start{position:fixed;inset:0;background:rgba(0,0,0,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;text-align:center;line-height:1.8}
 #dmg{position:fixed;inset:0;background:red;opacity:0;pointer-events:none;transition:opacity .2s}</style></head>
 <body><div id="ch"></div><div id="hud"></div><div id="msg"></div><div id="dmg"></div>
-<div id="start">کلیک کن برای شروع<br><small>WASD حرکت | موس نشانه‌گیری | کلیک چپ شلیک | R ریلود | Shift دویدن | Space پرش</small></div>
+<div id="start"><div>کلیک کن برای شروع<br><small>WASD حرکت | موس نشانه‌گیری | کلیک چپ شلیک | Q/E لین چپ/راست<br>1 تفنگ | 2 شعله‌افکن | 3 نارنجک‌انداز | اسکرول تعویض سلاح | R ریلود | Shift دویدن | Space پرش | C خم شدن</small></div></div>
 <script type="module">
 import * as THREE from "../lib/three.module.min.js";
+// ابعاد به متر (مقیاس واقعی)
+const EYE=1.7,CROUCH=1.15,R_PLAYER=.3,WALL_H=3.2,WALL_T=.25,DOOR_W=1.0,DOOR_H=2.1;
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(2,devicePixelRatio));
 renderer.shadowMap.enabled=true;document.body.prepend(renderer.domElement);
-const scene=new THREE.Scene();scene.background=new THREE.Color(0x9fb3c0);scene.fog=new THREE.Fog(0x9fb3c0,20,70);
-const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,200);scene.add(camera);
-scene.add(new THREE.HemisphereLight(0xdde8ff,0x554433,.8));
-const sun=new THREE.DirectionalLight(0xfff0d0,1.4);sun.position.set(20,30,10);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
-Object.assign(sun.shadow.camera,{left:-40,right:40,top:40,bottom:-40});scene.add(sun);
-const M=c=>new THREE.MeshStandardMaterial({color:c,roughness:.8});
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x9fb3c0);scene.fog=new THREE.Fog(0x9fb3c0,30,110);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.03,300);scene.add(camera);
+scene.add(new THREE.HemisphereLight(0xdde8ff,0x554433,.9));
+const sun=new THREE.DirectionalLight(0xfff0d0,1.4);sun.position.set(25,40,15);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-35,right:35,top:35,bottom:-35});scene.add(sun);
+const mats={};const M=c=>mats[c]||(mats[c]=new THREE.MeshStandardMaterial({color:c,roughness:.85}));
 const box=(w,h,d,c,x=0,y=0,z=0,p=scene)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;p.add(m);return m};
-// map
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(80,80),M(0x6b5f48));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
-const walls=[];const W=(w,h,d,x,z,c=0x8a8270)=>walls.push(box(w,h,d,c,x,h/2,z));
-W(60,4,1,0,-30);W(60,4,1,0,30);W(1,4,60,-30,0);W(1,4,60,30,0);
-[[4,2,4,-8,-6],[2,3,8,6,4],[6,1.2,1,0,-12,0x5a4a30],[3,3,3,12,-10],[1,2.5,10,-14,8],[5,1.2,1,-4,12,0x5a4a30],[3,2,3,16,14],[2,2,2,-18,-16]]
- .forEach(a=>W(...a));
-const boxes=walls.map(m=>new THREE.Box3().setFromObject(m));
-// gun + arms on camera
-const gun=new THREE.Group();camera.add(gun);gun.position.set(.25,-.25,-.5);
-box(.08,.1,.5,0x222222,0,0,0,gun);box(.04,.04,.35,0x111111,0,.02,-.4,gun);box(.06,.15,.06,0x1a1a1a,0,-.1,.05,gun).rotation.x=.3;
-box(.07,.18,.08,0x333333,0,-.13,-.12,gun);box(.07,.09,.2,0x3d3a30,0,-.01,.32,gun);box(.03,.04,.06,0x111111,0,.07,0,gun);
+// ---------- محیط ----------
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),M(0x6b6a48));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+const solids=[];const S=(w,h,d,x,y,z,c)=>{const m=box(w,h,d,c,x,y,z);solids.push(m);return m};
+// دیوار با درب: محور x یا z، مختصات ثابت، بازه، مراکز درها
+function wallLine(axis,fixed,a,b,doors=[],c=0xb8ad94){
+ const cuts=[a,...doors.flatMap(d=>[d-DOOR_W/2,d+DOOR_W/2]),b];
+ for(let i=0;i<cuts.length;i+=2){const s=cuts[i],e=cuts[i+1],L=e-s,mid=(s+e)/2;if(L<=0)continue;
+  axis==="x"?S(L,WALL_H,WALL_T,mid,WALL_H/2,fixed,c):S(WALL_T,WALL_H,L,fixed,WALL_H/2,mid,c)}
+ for(const d of doors){const h=WALL_H-DOOR_H;axis==="x"?S(DOOR_W,h,WALL_T,d,DOOR_H+h/2,fixed,c):S(WALL_T,h,DOOR_W,fixed,DOOR_H+h/2,d,c)}}
+// ساختمان بزرگ 30×20 متر
+const BX=15,BZ=10;
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(BX*2,BZ*2),M(0x7d7b76));floor.rotation.x=-Math.PI/2;floor.position.y=.01;floor.receiveShadow=true;scene.add(floor);
+wallLine("x",BZ,-BX,BX,[-1,1]);           // جنوب: درب دولنگه
+wallLine("x",-BZ,-BX,BX,[9]);              // شمال
+wallLine("z",-BX,-BZ,BZ,[3]);              // غرب
+wallLine("z",BX,-BZ,BZ,[-6]);              // شرق
+wallLine("x",0,-BX,BX,[-9,2,11],0xa89f88);  // راهرو میانی
+wallLine("z",-4,0,BZ,[5],0xa89f88);
+wallLine("z",5,-BZ,0,[-4],0xa89f88);
+S(BX*2+.5,.25,BZ*2+.5,0,WALL_H+.125,0,0x55524c); // سقف
+// اثاثیه با ابعاد واقعی: میز 0.75، جعبه 1×1، قفسه 2م
+[[1.6,.75,.8,-10,.375,6,0x6a4a2a],[1,1,1,8,.5,6,0x7a6a3a],[1,1,1,9.1,.5,6.3,0x7a6a3a],[1.2,1.2,1.2,-10,.6,-5,0x7a6a3a],
+ [.5,2,2,13.5,1,-3,0x4a4a4a],[1.6,.75,.8,0,.375,-6,0x6a4a2a],[2,1,.6,-6,.5,-2,0x5a5a5a],[1,1,1,12,.5,4,0x7a6a3a],
+ // بیرون: جعبه‌ها و بشکه‌ها و ماشین
+ [1.2,1.2,1.2,-6,.6,20,0x7a6a3a],[1.2,1.2,1.2,-4.6,.6,20.4,0x7a6a3a],[4.5,1.5,1.8,8,.75,18,0x3a4a5a],[1.2,1.2,1.2,-20,.6,0,0x7a6a3a],
+ [6,1,.3,-12,.5,15,0x8a8270],[6,1,.3,12,.5,26,0x8a8270]].forEach(a=>S(...a));
+[[-2,0,14],[3,0,22],[18,0,5]].forEach(([x,,z])=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,.9,16),M(0x2a5a2a));m.position.set(x,.45,z);m.castShadow=true;scene.add(m);solids.push(m)});
+// چراغ‌های داخل
+[[-9,5],[6,5],[-6,-5],[10,-5]].forEach(([x,z])=>{const l=new THREE.PointLight(0xffe2b0,8,14,1.6);l.position.set(x,2.9,z);scene.add(l);
+ const b=new THREE.Mesh(new THREE.BoxGeometry(1.2,.05,.2),new THREE.MeshBasicMaterial({color:0xfff2d0}));b.position.set(x,3.05,z);scene.add(b)});
+const boxes=solids.map(m=>new THREE.Box3().setFromObject(m));
+// ---------- سلاح‌ها (ویومدل) ----------
 const skin=0xc9a07a,sleeve=0x4a5a2a;
-box(.09,.09,.35,sleeve,.03,-.12,.3,gun).rotation.x=-.3;box(.07,.07,.08,skin,0,-.1,.1,gun);
-box(.09,.09,.4,sleeve,-.12,-.12,-.05,gun).rotation.y=.5;box(.07,.06,.09,skin,-.03,-.06,-.22,gun);
-const flash=new THREE.PointLight(0xffcc55,0,6);flash.position.set(0,.03,-.65);gun.add(flash);
-const fm=new THREE.Mesh(new THREE.SphereGeometry(.06),new THREE.MeshBasicMaterial({color:0xffdd66}));fm.position.copy(flash.position);fm.visible=false;gun.add(fm);
-// enemy
-const enemy=new THREE.Group();scene.add(enemy);const eparts=[];
-const ep=(...a)=>{const m=box(...a,enemy);eparts.push(m);return m};
-ep(.5,.7,.3,sleeve,0,1.25,0);ep(.25,.25,.25,skin,0,1.75,0);ep(.3,.12,.3,0x334022,0,1.92,0);
-const lL=ep(.18,.8,.18,0x2e3320,-.13,.45,0),lR=ep(.18,.8,.18,0x2e3320,.13,.45,0);
-const aL=ep(.14,.6,.14,sleeve,-.33,1.3,0),aR=ep(.14,.6,.14,sleeve,.33,1.3,-.1);aR.rotation.x=-1.3;aL.rotation.x=-1.1;
-ep(.06,.08,.6,0x111111,.15,1.35,.35);
-const eFlash=new THREE.PointLight(0xffcc55,0,5);eFlash.position.set(.15,1.35,.7);enemy.add(eFlash);
-enemy.position.set(15,0,15);
-let e={hp:5,cd:2,dead:false,t:0};
-// player
-const P={pos:new THREE.Vector3(-20,1.6,-20),vy:0,yaw:-Math.PI*.75,pitch:0,hp:100,ammo:30,ground:true};
-const keys={};let locked=false,recoil=0,flashT=0,reload=0;
-const start=document.getElementById("start"),hud=document.getElementById("hud"),msg=document.getElementById("msg"),dmg=document.getElementById("dmg");
+function arms(g){box(.09,.09,.35,sleeve,.03,-.12,.3,g).rotation.x=-.3;box(.07,.07,.08,skin,0,-.1,.1,g);box(.09,.09,.4,sleeve,-.12,-.12,-.05,g).rotation.y=.5;box(.07,.06,.09,skin,-.03,-.06,-.22,g)}
+const viewRoot=new THREE.Group();camera.add(viewRoot);
+const rifle=new THREE.Group(),flamer=new THREE.Group(),gl=new THREE.Group();
+// تفنگ تهاجمی ~0.9م
+box(.06,.09,.45,0x222222,0,0,0,rifle);box(.03,.03,.35,0x111111,0,.02,-.38,rifle);box(.05,.14,.06,0x1a1a1a,0,-.1,.05,rifle).rotation.x=.3;
+box(.05,.17,.07,0x333333,0,-.13,-.1,rifle).rotation.x=-.2;box(.06,.09,.22,0x3d3a30,0,-.01,.32,rifle);box(.03,.04,.08,0x111111,0,.07,0,rifle);arms(rifle);
+// شعله‌افکن: مخزن + لوله
+box(.07,.09,.55,0x3a3a2a,0,0,-.05,flamer);const nz=new THREE.Mesh(new THREE.CylinderGeometry(.025,.035,.3,10),M(0x111111));nz.rotation.x=Math.PI/2;nz.position.set(0,.01,-.45);flamer.add(nz);
+const tank=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.3,14),M(0x8a2a1a));tank.rotation.x=Math.PI/2;tank.position.set(0,-.1,-.05);flamer.add(tank);
+box(.05,.14,.06,0x1a1a1a,0,-.1,.12,flamer).rotation.x=.3;const pilot=new THREE.PointLight(0x3399ff,.4,.5);pilot.position.set(0,0,-.62);flamer.add(pilot);arms(flamer);
+// نارنجک‌انداز 40mm: لوله پهن + خشاب استوانه‌ای
+const tube=new THREE.Mesh(new THREE.CylinderGeometry(.03,.03,.4,14),M(0x2a2a2a));tube.rotation.x=Math.PI/2;tube.position.set(0,.02,-.3);gl.add(tube);
+const drum=new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.12,6),M(0x444438));drum.rotation.x=Math.PI/2;drum.position.set(0,-.02,-.05);gl.add(drum);
+box(.06,.09,.3,0x3a3a30,0,-.01,.15,gl);box(.05,.14,.06,0x1a1a1a,0,-.1,.08,gl).rotation.x=.3;box(.05,.08,.03,0x111111,0,.1,-.15,gl);arms(gl);
+const WEAPONS=[
+ {name:"Rifle",model:rifle,mag:30,ammo:30,reserve:120,rate:.1,reload:2.2,muzzle:new THREE.Vector3(0,.02,-.58)},
+ {name:"Flamethrower",model:flamer,mag:100,ammo:100,reserve:200,rate:.03,reload:3,muzzle:new THREE.Vector3(0,.01,-.62)},
+ {name:"Grenade Launcher",model:gl,mag:6,ammo:6,reserve:12,rate:.7,reload:3,muzzle:new THREE.Vector3(0,.02,-.52)}];
+WEAPONS.forEach(w=>{viewRoot.add(w.model);w.model.visible=false});
+let cur=0;WEAPONS[0].model.visible=true;let swap=0;
+function selectWeapon(i){if(i===cur||P.hp<=0)return;WEAPONS[cur].model.visible=false;cur=i;WEAPONS[cur].model.visible=true;swap=.4;reload=0}
+const mflash=new THREE.PointLight(0xffcc55,0,6);viewRoot.add(mflash);
+const fm=new THREE.Mesh(new THREE.SphereGeometry(.05),new THREE.MeshBasicMaterial({color:0xffdd66}));fm.visible=false;viewRoot.add(fm);
+// ---------- دشمنان (قد 1.8م) ----------
+const enemies=[],eparts=[];
+function makeEnemy(x,z,yaw){const g=new THREE.Group();scene.add(g);g.position.set(x,0,z);g.rotation.y=yaw;
+ const en={g,hp:100,cd:1+Math.random()*2,dead:false,t:0,alert:false,last:null,burn:0,flashT:0,parts:[]};
+ const P_=(w,h,d,c,px,py,pz,head)=>{const m=box(w,h,d,c,px,py,pz,g);m.userData={en,head};eparts.push(m);en.parts.push(m);return m};
+ en.legL=P_(.16,.88,.18,0x2e3320,-.11,.44,0);en.legR=P_(.16,.88,.18,0x2e3320,.11,.44,0);
+ P_(.42,.6,.24,sleeve,0,1.2,0);P_(.44,.35,.28,0x333a22,0,1.3,0);
+ P_(.2,.24,.22,skin,0,1.66,0,true);P_(.26,.1,.28,0x334022,0,1.79,0,true);
+ const aL=P_(.12,.55,.12,sleeve,-.28,1.27,.08),aR=P_(.12,.55,.12,sleeve,.28,1.27,0);aR.rotation.x=-1.3;aL.rotation.x=-1.1;
+ P_(.05,.08,.85,0x111111,.12,1.32,.4);
+ en.light=new THREE.PointLight(0xffcc55,0,5);en.light.position.set(.12,1.33,.9);g.add(en.light);enemies.push(en)}
+[[-10,3,0],[-12,7,1],[8,4,2],[11,8,3],[-8,-4,1],[-12,-8,0],[9,-3,2],[12,-8,3],[0,-7,1],[2,6,0]].forEach(a=>makeEnemy(...a));
+// ---------- بازیکن ----------
+const P={pos:new THREE.Vector3(0,EYE,32),vy:0,yaw:0,pitch:0,hp:100,ground:true,h:EYE};
+const keys={};let locked=false,recoil=0,flashT=0,reload=0,lean=0,firing=false,fireCd=0;
+const $=id=>document.getElementById(id),start=$("start"),hud=$("hud"),msg=$("msg"),dmg=$("dmg");
 start.onclick=()=>renderer.domElement.requestPointerLock();
 document.addEventListener("pointerlockchange",()=>{locked=document.pointerLockElement===renderer.domElement;start.style.display=locked?"none":"flex"});
 addEventListener("mousemove",ev=>{if(!locked)return;P.yaw-=ev.movementX*.0022;P.pitch=Math.max(-1.5,Math.min(1.5,P.pitch-ev.movementY*.0022))});
-addEventListener("keydown",ev=>{keys[ev.code]=1;if(ev.code==="KeyR"&&P.ammo<30&&!reload)reload=1.5;if(ev.code==="Space"&&P.ground){P.vy=5;P.ground=false}});
+addEventListener("keydown",ev=>{keys[ev.code]=1;const w=WEAPONS[cur];
+ if(ev.code==="KeyR"&&w.ammo<w.mag&&w.reserve>0&&!reload)reload=w.reload;
+ if(ev.code==="Space"&&P.ground){P.vy=4.2;P.ground=false}
+ if(ev.code.startsWith("Digit")){const n=+ev.code.slice(5)-1;if(WEAPONS[n])selectWeapon(n)}});
 addEventListener("keyup",ev=>keys[ev.code]=0);
-let firing=false;addEventListener("mousedown",ev=>{if(locked&&ev.button===0)firing=true});addEventListener("mouseup",()=>firing=false);
-const ray=new THREE.Raycaster();let fireCd=0;
-function shoot(){if(P.ammo<=0||reload||P.hp<=0)return;P.ammo--;fireCd=.1;recoil=.06;flashT=.05;P.pitch+=.012;
- ray.setFromCamera(new THREE.Vector2((Math.random()-.5)*.01,(Math.random()-.5)*.01),camera);
- const hits=ray.intersectObjects([...walls,...eparts]);
- if(hits[0]&&eparts.includes(hits[0].object)&&!e.dead){e.hp-=hits[0].object===eparts[1]?3:1;hitFx(hits[0].point,0xaa0000);
-  if(e.hp<=0){e.dead=true;msg.textContent="ENEMY DOWN"}}else if(hits[0])hitFx(hits[0].point,0xcccccc);
- if(!P.ammo)reload=1.5}
-const fx=[];function hitFx(p,c){const m=new THREE.Mesh(new THREE.SphereGeometry(.05),new THREE.MeshBasicMaterial({color:c}));m.position.copy(p);scene.add(m);fx.push([m,.3])}
-function collide(p,r=.35){for(const b of boxes){if(p.y-1.6>b.max.y-.05)continue;
+addEventListener("wheel",ev=>selectWeapon((cur+(ev.deltaY>0?1:2))%3));
+addEventListener("mousedown",ev=>{if(locked&&ev.button===0)firing=true});addEventListener("mouseup",()=>firing=false);
+const ray=new THREE.Raycaster();
+function hurt(en,d,point){if(en.dead)return;en.hp-=d;en.alert=true;en.last=P.pos.clone();if(point)hitFx(point,0xaa0000);if(en.hp<=0){en.dead=true;en.light.intensity=0;
+ if(enemies.every(e=>e.dead))msg.textContent="MISSION COMPLETE"}}
+function muzzleWorld(){return WEAPONS[cur].muzzle.clone().applyMatrix4(viewRoot.matrixWorld)}
+function shoot(){const w=WEAPONS[cur];if(w.ammo<=0||reload||swap>0||P.hp<=0)return;w.ammo--;fireCd=w.rate;
+ const dir=new THREE.Vector3();camera.getWorldDirection(dir);
+ if(cur===0){recoil=.05;flashT=.05;P.pitch+=.01;
+  ray.setFromCamera(new THREE.Vector2((Math.random()-.5)*.01,(Math.random()-.5)*.01),camera);
+  const h=ray.intersectObjects([...solids,...eparts])[0];
+  if(h&&h.object.userData.en)hurt(h.object.userData.en,h.object.userData.head?100:34,h.point);else if(h)hitFx(h.point,0xcccccc)}
+ else if(cur===1){recoil=.01;spawnFlame(muzzleWorld(),dir);
+  for(const en of enemies){if(en.dead)continue;const c=en.g.position.clone().setY(1.2),to=c.clone().sub(camera.position),d=to.length();
+   if(d<8&&to.normalize().dot(dir)>.96&&los(camera.position,c)){hurt(en,4);en.burn=2}}}
+ else{recoil=.12;flashT=.08;P.pitch+=.04;const g=new THREE.Mesh(new THREE.SphereGeometry(.04,8,8),M(0x5a5a3a));g.position.copy(muzzleWorld());scene.add(g);
+  grenades.push({m:g,v:dir.multiplyScalar(35),t:0})}
+ if(!w.ammo&&w.reserve)reload=w.reload}
+// افکت‌ها
+const fx=[];function hitFx(p,c){const m=new THREE.Mesh(new THREE.SphereGeometry(.04),new THREE.MeshBasicMaterial({color:c}));m.position.copy(p);scene.add(m);fx.push({m,t:.3})}
+const flameMat=new THREE.MeshBasicMaterial({color:0xff7722,transparent:true,opacity:.8,blending:THREE.AdditiveBlending,depthWrite:false});
+const flameGeo=new THREE.SphereGeometry(.12,8,6);const flames=[];
+function spawnFlame(p,dir){for(let i=0;i<3;i++){const m=new THREE.Mesh(flameGeo,flameMat.clone());m.position.copy(p);scene.add(m);
+ const v=dir.clone().multiplyScalar(11+Math.random()*3).add(new THREE.Vector3((Math.random()-.5)*1.5,(Math.random()-.5)*1.5+.5,(Math.random()-.5)*1.5));
+ flames.push({m,v,t:0,life:.6+Math.random()*.2})}}
+const fireLight=new THREE.PointLight(0xff6622,0,10);scene.add(fireLight);
+const grenades=[],booms=[];
+function explode(p){const m=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),new THREE.MeshBasicMaterial({color:0xffaa33,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));
+ m.position.copy(p);scene.add(m);const l=new THREE.PointLight(0xffaa44,30,20);l.position.copy(p);scene.add(l);booms.push({m,l,t:0});
+ for(const en of enemies){const d=en.g.position.clone().setY(1).distanceTo(p);if(d<6&&los(p,en.g.position.clone().setY(1)))hurt(en,Math.round(180*(1-d/6)))}
+ const pd=P.pos.distanceTo(p);if(pd<6)damagePlayer(Math.round(90*(1-pd/6)))}
+function damagePlayer(d){if(P.hp<=0||d<=0)return;P.hp=Math.max(0,P.hp-d);dmg.style.opacity=.4;setTimeout(()=>dmg.style.opacity=0,150);
+ if(!P.hp){msg.textContent="YOU DIED";document.exitPointerLock()}}
+// برخورد
+function collide(p,r,feet,head){for(const b of boxes){if(feet>b.max.y-.05||head<b.min.y)continue;
  const cx=Math.max(b.min.x,Math.min(p.x,b.max.x)),cz=Math.max(b.min.z,Math.min(p.z,b.max.z)),dx=p.x-cx,dz=p.z-cz,d=Math.hypot(dx,dz);
- if(d<r&&d>0){p.x+=dx/d*(r-d);p.z+=dz/d*(r-d)}}}
-function losTo(from,to){const dir=to.clone().sub(from),len=dir.length();ray.set(from,dir.normalize());ray.far=len;const h=ray.intersectObjects(walls);ray.far=Infinity;return!h.length}
+ if(d<r&&d>1e-6){p.x+=dx/d*(r-d);p.z+=dz/d*(r-d)}}}
+function los(from,to){const dir=to.clone().sub(from),len=dir.length();ray.set(from,dir.normalize());ray.far=len;const h=ray.intersectObjects(solids);ray.far=Infinity;return!h.length}
+function pointInSolid(p){return boxes.some(b=>b.containsPoint(p))}
+// ---------- حلقه ----------
 const clock=new THREE.Clock();
-function loop(){const dt=Math.min(.05,clock.getDelta());
- if(P.hp>0&&locked){const sp=(keys.ShiftLeft?7:4.2)*dt,f=new THREE.Vector3(-Math.sin(P.yaw),0,-Math.cos(P.yaw)),r=new THREE.Vector3(-f.z,0,f.x),mv=new THREE.Vector3();
-  if(keys.KeyW)mv.add(f);if(keys.KeyS)mv.sub(f);if(keys.KeyD)mv.add(r);if(keys.KeyA)mv.sub(r);
+function loop(){const dt=Math.min(.05,clock.getDelta()),t=clock.elapsedTime;
+ const fwd=new THREE.Vector3(-Math.sin(P.yaw),0,-Math.cos(P.yaw)),right=new THREE.Vector3(-fwd.z,0,fwd.x);
+ const crouch=keys.KeyC||keys.ControlLeft;P.h+=((crouch?CROUCH:EYE)-P.h)*Math.min(1,dt*12);
+ if(P.hp>0&&locked){const sp=(crouch?1.6:keys.ShiftLeft?6:3.6)*dt,mv=new THREE.Vector3();
+  if(keys.KeyW)mv.add(fwd);if(keys.KeyS)mv.sub(fwd);if(keys.KeyD)mv.add(right);if(keys.KeyA)mv.sub(right);
   if(mv.lengthSq())P.pos.addScaledVector(mv.normalize(),sp);
-  if(keys.KeyQ)P.yaw+=2*dt;if(keys.KeyE)P.yaw-=2*dt;
   fireCd-=dt;if(firing&&fireCd<=0)shoot()}
- P.vy-=12*dt;P.pos.y+=P.vy*dt;
- let floor=1.6;for(const b of boxes){if(P.pos.x>b.min.x-.2&&P.pos.x<b.max.x+.2&&P.pos.z>b.min.z-.2&&P.pos.z<b.max.z+.2&&P.pos.y-1.6>=b.max.y-.3)floor=Math.max(floor,b.max.y+1.6)}
- if(P.pos.y<=floor){P.pos.y=floor;P.vy=0;P.ground=true}collide(P.pos);
- if(reload){reload-=dt;if(reload<=0){reload=0;P.ammo=30}}
- camera.position.copy(P.pos);camera.rotation.set(P.pitch,P.yaw,0,"YXZ");
- const moving=(keys.KeyW||keys.KeyS||keys.KeyA||keys.KeyD)&&P.ground,t=clock.elapsedTime;
- recoil*=.8;gun.position.set(.25+(moving?Math.sin(t*9)*.012:0),-.25+(moving?Math.abs(Math.cos(t*9))*.012:0)-(reload?.15:0),-.5+recoil);
- gun.rotation.x=reload?-.5:recoil*2;flashT-=dt;flash.intensity=flashT>0?3:0;fm.visible=flashT>0;
- // enemy AI
- const eyes=enemy.position.clone().setY(1.75),dist=eyes.distanceTo(P.pos),see=!e.dead&&losTo(eyes,P.pos);
- if(!e.dead&&P.hp>0){enemy.rotation.y=Math.atan2(P.pos.x-enemy.position.x,P.pos.z-enemy.position.z);
-  if(dist>6||!see){const d=P.pos.clone().sub(enemy.position).setY(0).normalize().multiplyScalar(2.2*dt);enemy.position.add(d);
-   const ep2=enemy.position.clone().setY(1.6);collide(ep2,.4);enemy.position.x=ep2.x;enemy.position.z=ep2.z;e.t+=dt*8}
-  lL.rotation.x=Math.sin(e.t)*.5;lR.rotation.x=-Math.sin(e.t)*.5;
-  e.cd-=dt;eFlash.intensity=e.cd>.9?3:0;
-  if(see&&e.cd<=0){e.cd=1;if(Math.random()<Math.max(.15,.6-dist*.02)){P.hp=Math.max(0,P.hp-10);dmg.style.opacity=.4;setTimeout(()=>dmg.style.opacity=0,150);if(!P.hp){msg.textContent="YOU DIED";document.exitPointerLock()}}}}
- else if(e.dead&&enemy.rotation.x>-Math.PI/2){enemy.rotation.x-=dt*4;eFlash.intensity=0}
- for(let i=fx.length-1;i>=0;i--){if((fx[i][1]-=dt)<=0){scene.remove(fx[i][0]);fx.splice(i,1)}}
- hud.textContent=`HP ${P.hp}   |   ${reload?"RELOADING...":"Ammo "+P.ammo+"/30"}   |   Enemy ${e.dead?"DEAD":"HP "+e.hp}`;
+ const target=(keys.KeyE?1:0)-(keys.KeyQ?1:0);lean+=(target-lean)*Math.min(1,dt*10);
+ P.vy-=9.81*dt;P.pos.y+=P.vy*dt;
+ let fl=P.h;for(const b of boxes){if(P.pos.x>b.min.x-.15&&P.pos.x<b.max.x+.15&&P.pos.z>b.min.z-.15&&P.pos.z<b.max.z+.15&&P.pos.y-P.h>=b.max.y-.35)fl=Math.max(fl,b.max.y+P.h)}
+ if(P.pos.y<=fl){P.pos.y=fl;P.vy=0;P.ground=true}else if(P.pos.y-fl>.05)P.ground=false;
+ collide(P.pos,R_PLAYER,P.pos.y-P.h,P.pos.y+.15);
+ const w=WEAPONS[cur];if(reload){reload-=dt;if(reload<=0){reload=0;const n=Math.min(w.mag-w.ammo,w.reserve);w.ammo+=n;w.reserve-=n}}
+ swap=Math.max(0,swap-dt);
+ // لین: جابجایی 40سم + چرخش، محدود به دیوار
+ let lo=lean*.4;const head=P.pos.clone();
+ for(let k=0;k<8;k++){const test=head.clone().addScaledVector(right,lo+Math.sign(lo)*.15);if(!pointInSolid(test))break;lo*=.7}
+ camera.position.copy(P.pos).addScaledVector(right,lo).add(new THREE.Vector3(0,-Math.abs(lean)*.08,0));
+ camera.rotation.set(P.pitch,P.yaw,-lean*.25,"YXZ");
+ const moving=(keys.KeyW||keys.KeyS||keys.KeyA||keys.KeyD)&&P.ground;
+ recoil*=.8;viewRoot.position.set(.22+(moving?Math.sin(t*9)*.01:0),-.22+(moving?Math.abs(Math.cos(t*9))*.01:0)-(reload||swap?.15:0),-.42+recoil);
+ viewRoot.rotation.x=reload||swap?-.5:recoil*2;
+ flashT-=dt;mflash.intensity=flashT>0?3:0;fm.visible=flashT>0;mflash.position.copy(w.muzzle);fm.position.copy(w.muzzle);
+ // شعله
+ let fireN=0;for(let i=flames.length-1;i>=0;i--){const f=flames[i];f.t+=dt;f.v.y+=1.5*dt;f.m.position.addScaledVector(f.v,dt);
+  const k=f.t/f.life;f.m.scale.setScalar(1+k*6);f.m.material.opacity=.8*(1-k);f.m.material.color.setHSL(.08-.06*k,1,.55-.25*k);
+  if(pointInSolid(f.m.position))f.v.multiplyScalar(.2);fireN++;
+  if(f.t>=f.life){scene.remove(f.m);f.m.material.dispose();flames.splice(i,1)}}
+ if(flames.length){fireLight.position.copy(flames[flames.length-1].m.position);fireLight.intensity=6}else fireLight.intensity=0;
+ // نارنجک
+ for(let i=grenades.length-1;i>=0;i--){const g=grenades[i],prev=g.m.position.clone();g.t+=dt;g.v.y-=9.81*dt;g.m.position.addScaledVector(g.v,dt);
+  const seg=g.m.position.clone().sub(prev),len=seg.length();ray.set(prev,seg.normalize());ray.far=len;
+  const h=ray.intersectObjects([...solids,...eparts,ground])[0];ray.far=Infinity;
+  if(h||g.t>6){explode(h?h.point:g.m.position);scene.remove(g.m);grenades.splice(i,1)}}
+ for(let i=booms.length-1;i>=0;i--){const b=booms[i];b.t+=dt;b.m.scale.setScalar(.5+b.t*12);b.m.material.opacity=1-b.t/.5;b.l.intensity=30*(1-b.t/.5);
+  if(b.t>.5){scene.remove(b.m,b.l);booms.splice(i,1)}}
+ // هوش مصنوعی دشمن
+ for(const en of enemies){const g=en.g;
+  if(en.dead){if(g.rotation.x>-Math.PI/2)g.rotation.x-=dt*4;continue}
+  if(en.burn>0){en.burn-=dt;en.hp-=15*dt;if(en.hp<=0)hurt(en,0)}
+  const eyes=g.position.clone().setY(1.66),dist=eyes.distanceTo(camera.position);
+  const facing=new THREE.Vector3(Math.sin(g.rotation.y),0,Math.cos(g.rotation.y)),toP=camera.position.clone().sub(eyes).setY(0).normalize();
+  const see=P.hp>0&&dist<45&&(en.alert||facing.dot(toP)>.3||dist<5)&&los(eyes,camera.position);
+  if(see){en.alert=true;en.last=P.pos.clone()}
+  if(en.alert&&P.hp>0){const goal=see?P.pos:en.last;g.rotation.y=Math.atan2(goal.x-g.position.x,goal.z-g.position.z);
+   const gd=goal.clone().setY(0).distanceTo(g.position);
+   if((!see&&gd>.5)||(see&&dist>9)){const d=goal.clone().setY(0).sub(g.position.clone().setY(0)).normalize().multiplyScalar(2*dt);g.position.add(d);
+    const pp=g.position.clone();collide(pp,.35,0,1.8);g.position.x=pp.x;g.position.z=pp.z;en.t+=dt*8}
+   en.cd-=dt;
+   if(see&&en.cd<=0){en.cd=.9+Math.random()*.8;en.flashT=.06;
+    const chance=Math.max(.12,.55-dist*.015)*(Math.abs(lean)>.5?.6:1)*(crouch?.8:1);if(Math.random()<chance)damagePlayer(8+Math.round(Math.random()*6))}}
+  en.flashT-=dt;en.light.intensity=en.flashT>0?3:0;
+  en.legL.rotation.x=Math.sin(en.t)*.5;en.legR.rotation.x=-Math.sin(en.t)*.5}
+ for(let i=fx.length-1;i>=0;i--){if((fx[i].t-=dt)<=0){scene.remove(fx[i].m);fx.splice(i,1)}}
+ const alive=enemies.filter(e=>!e.dead).length;
+ hud.textContent=`HP ${P.hp}   |   ${w.name}: ${reload?"RELOADING...":w.ammo+" / "+w.reserve}   |   Enemies ${alive}/${enemies.length}`;
  renderer.render(scene,camera);requestAnimationFrame(loop)}
 loop();
 addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});

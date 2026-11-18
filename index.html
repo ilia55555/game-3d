@@ -33,6 +33,13 @@
   #weap{right:16px;bottom:16px;color:#fff;background:#0008;padding:8px 12px;border-radius:6px;font-size:14px;direction:rtl}
   #start{inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#fff;background:#0007;pointer-events:auto;cursor:pointer;text-align:center;direction:rtl;font-size:15px;line-height:1.9}
   #start h1{margin:0;font-size:34px;letter-spacing:2px}
+  #loading{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#e8e2d0;direction:rtl;
+    background:radial-gradient(ellipse at 50% 40%,#2a2a22 0%,#0d0e0b 70%);font-family:sans-serif;transition:opacity .6s}
+  #loading h1{margin:0;font-size:38px;letter-spacing:3px;color:#fff}
+  #lbar{width:min(420px,80vw);height:8px;background:#ffffff1a;border-radius:4px;overflow:hidden}
+  #lbar i{display:block;height:100%;width:2%;background:linear-gradient(90deg,#c8963c,#f0c060);transition:width .25s}
+  #ltxt{font-size:14px;opacity:.85;min-height:20px}
+  #ltip{font-size:12px;opacity:.55;max-width:80vw;text-align:center}
   #modes{display:flex;gap:14px;margin:6px 0}
   #modes button{font:inherit;font-size:17px;padding:10px 26px;border-radius:8px;border:1px solid #fff6;background:#0009;color:#fff;cursor:pointer}
   #modes button.on{background:#d9a441;color:#111;border-color:#d9a441}
@@ -50,6 +57,8 @@
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 </head>
 <body>
+<div id="loading"><h1>ABANDONED GROUNDS</h1><div id="lbar"><i></i></div><div id="ltxt">در حال دریافت موتور گرافیک...</div>
+<div id="ltip">نکته: نشسته و آرام حرکت کن و صداخفه‌کن (V) بزن تا دشمن‌ها متوجه تو نشوند.</div></div>
 <div id="scope" class="ui"><i></i></div>
 <div id="cross" class="ui"><i></i><i></i><i></i><i></i><b></b></div>
 <div id="hit" class="ui"><i></i><i></i><i></i><i></i></div>
@@ -62,7 +71,7 @@
 <div id="flash" class="ui"></div>
 <div id="weap" class="ui"></div>
 <div id="stealthT" class="ui"></div><div id="stealth" class="ui"><i></i></div><div id="status" class="ui"></div>
-<div id="start" class="ui"><h1>ABANDONED GROUNDS</h1>
+<div id="start" class="ui" style="display:none"><h1>ABANDONED GROUNDS</h1>
 <div id="modes"><button id="bDay" class="on">☀ روز</button><button id="bNight">☾ شب</button></div>
 <div>برای شروع کلیک کن</div>
 <div style="font-size:13px;opacity:.85">WASD حرکت · Shift دویدن · Space پرش · C نشستن (هنگام دویدن: سُر خوردن) · Q/E خم شدن به چپ/راست<br>کلیک چپ شلیک · کلیک راست نشانه‌گیری · R خشاب · ۱ تا ۷ یا چرخ ماوس: سلاح‌ها · ۸ یا G: C4 (کلیک چپ کار گذاشتن · F انفجار)<br>Shift هنگام نشانه‌گیری با اسنایپر: نگه داشتن نفس · Shift هنگام سُر خوردن: بلند شدن و دویدن<br>V صداخفه‌کن · T چراغ قوه · N دید در شب · P کیفیت گرافیک · Esc توقف<br>آرام و نشسته حرکت کن تا دیده نشوی؛ شلیک بدون صداخفه‌کن همه را خبر می‌کند</div></div>
@@ -77,6 +86,10 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+// ---------- loading: build in stages and let the progress bar paint between them ----------
+const _lb=document.querySelector('#lbar i'),_lt=document.getElementById('ltxt');
+async function loadStep(txt,p){_lt.textContent=txt;_lb.style.width=p+'%';await new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));}
+await loadStep('آماده‌سازی موتور گرافیک',4);
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
@@ -154,6 +167,7 @@ M.sblock=new THREE.MeshStandardMaterial({map:blockTex(128,120,106),roughness:.92
 M.cblock=new THREE.MeshStandardMaterial({map:blockTex(140,136,128),roughness:.95});
 M.plank=new THREE.MeshStandardMaterial({map:texPlank,roughness:.8});
 
+await loadStep('ساخت آسمان، نور و جلوه‌های تصویری',10);
 // =====================================================================
 // GRAPHICS — physical sky, image-based lighting, normal maps, post FX
 // =====================================================================
@@ -363,6 +377,7 @@ function embers(x,z,r){
   emberDirty=true; emberActive=10;
 }
 
+await loadStep('ساخت ساختمان، برج، کلبه و خرابه‌ها',18);
 // =====================================================================
 // WORLD — masonry & plank construction
 // =====================================================================
@@ -480,6 +495,7 @@ TOWER.end=blocks.length; TOWER.c=V(-6,0,-45);
   for(let i=0;i<25;i++) addBlock('cube','sblock',rnd(.3,.9),rnd(.2,.5),rnd(.3,.9),x+rnd(-12,12),.15,z+rnd(-7,10),[0,rnd(.1,3),0],false);
 })();
 
+await loadStep('ساخت خانه‌های چندطبقه',28);
 // ---------- houses: 2–3 storeys, masonry walls, timber floors, internal stairs ----------
 const HOUSES=[[-46,-30,11,9,3,1],[50,32,12,9,2,-1],[-58,50,10,8,2,-1],[52,-56,11,10,3,1]];
 const houseSpots=[];   // interior floor positions (enemy spawns)
@@ -513,6 +529,7 @@ function house(cx,cz,W,D,nF,dir){
 }
 for(const h of HOUSES) house(...h);
 
+await loadStep('کاشت درختان',36);
 // ---------- trees ----------
 (function(){
   const avoid=[[0,0,14],[-6,-45,9],[-40,6,7],[38,-8,6],[8,40,15],[0,25,3],...HOUSES.map(h=>[h[0],h[1],Math.max(h[2],h[3])*.8+3])];
@@ -535,6 +552,7 @@ for(const h of HOUSES) house(...h);
 })();
 
 
+await loadStep('ساخت دیوارهای سنگی و جنگل مرزی',40);
 // ---------- map border: dry-stone walls (north, east) and dense forest (south, west); indestructible ----------
 (function(){
   const blk=[],put=(x,y,z,sx,sy,sz,ry=0)=>blk.push([x,y,z,sx,sy,sz,ry]);
@@ -561,6 +579,7 @@ for(const h of HOUSES) house(...h);
   bi.castShadow=bi.receiveShadow=true;scene.add(bi);
 })();
 
+await loadStep('آماده‌سازی فیزیک',46);
 // ---------- instancing + spatial grid ----------
 const ZERO=new THREE.Matrix4().makeScale(0,0,0),_mx=new THREE.Matrix4();
 const dirtyIM=new Set();
@@ -805,6 +824,7 @@ function applyImp(c,dir,j){
   if(c.dyn){const B=c.B; B.v.addScaledVector(dir,-j*B.invM); _b.crossVectors(c.rB,dir).multiplyScalar(-j); invIw(B,_b,_c); B.w.add(_c);}
 }
 
+await loadStep('اتصال ملات، میخ و جوش بین قطعات',52);
 // =====================================================================
 // MORTAR / WELD BONDS — touching pieces are glued with breakable 3-point welds:
 // walls fall as slabs and crack apart on impact, the crane is one welded frame, planks are nailed
@@ -1201,6 +1221,7 @@ function initAudio(){
   const conv=AC.createConvolver(); conv.buffer=ir;
   revIn=AC.createGain(); const rg=AC.createGain(); rg.gain.value=.5;
   revIn.connect(conv); conv.connect(rg); rg.connect(comp);
+  {const t=AC.currentTime,w=bus(new THREE.Vector3(0,0,-5),.0);tone(w,t,.05,'sine',100,0,.0003);nz(w,t,.05,'lowpass',500,0,1,.0003);}  // warm HRTF/convolver so the first real sound doesn't stall
 }
 function bus(p,wet,ref=4){
   const g=AC.createGain(); let out=g;
@@ -1372,6 +1393,7 @@ function explode(pos,R){
     player.vel.addScaledVector(dir,k);player.vel.y+=k*.4;player.onGround=false;}
 }
 
+await loadStep('ساخت سلاح‌ها و دست‌ها',60);
 // =====================================================================
 // WEAPONS — 7 guns + C4: detailed procedural models (merged per material), two gloved hands
 // =====================================================================
@@ -1747,6 +1769,7 @@ function groundAt(p,R){
   return gy;
 }
 
+await loadStep('آماده‌سازی دشمنان',66);
 // =====================================================================
 // ENEMIES — procedural soldiers: sculpted faces, gear, IK animation, verlet ragdolls
 // =====================================================================
@@ -1833,7 +1856,7 @@ const LAMP={lens:new THREE.MeshBasicMaterial({color:0xfff4dc}),
   beam:new THREE.MeshBasicMaterial({color:0xfff0cc,transparent:true,opacity:.035,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide})};
 // ---------- body builder: every part is a group posed from two joints ----------
 function makeSoldier(type){
-  const sniper=type==='sniper', variant={tone:['#c49a84','#a57c62','#7a5642','#d6b29c'][Math.floor(rnd(0,4))],beard:Math.random()<.55?rnd(.5,1):0,bala:Math.random()<.2,
+  const sniper=type==='sniper', variant={tone:['#c49a84','#a57c62','#7a5642','#d6b29c'][Math.floor(rnd(0,4))],beard:Math.random()<.55?(Math.random()<.5?.6:1):0,bala:Math.random()<.2,
     helmet:Math.random()<(sniper?.3:.72),goggles:Math.random()<.4,headset:Math.random()<.55,iris:IRIS[Math.floor(rnd(0,4))]};
   const uni=sniper?EM.uniD:EM.uni, skin=faceMat(variant.tone,variant.beard,variant.bala?1:0);
   const parts=[],root=new THREE.Group();scene.add(root);
@@ -1918,7 +1941,7 @@ function placeParts(e){
 // ---------- spawning ----------
 const glintMat=new THREE.SpriteMaterial({map:sparkTex,color:0xffffff,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,fog:false});
 function spawnEnemy(pos,type){
-  const sniper=type==='sniper', body=makeSoldier(type);
+  const sniper=type==='sniper', body=getSoldier(type);
   const e={...body,type,pos:pos.clone(),vel:V(),yaw:rnd(0,7),hp:100,state:sniper?'guard':'patrol',home:pos.clone(),wp:null,wait:rnd(0,2),
     think:rnd(0,.3),see:false,sus:0,lean:0,leanT:0,lastSeen:null,lostT:0,react:0,burst:0,shotCD:rnd(.5,1.5),flinch:0,flinchDir:V(),dead:false,deadT:0,tookCover:false,
     cover:null,walk:rnd(0,7),vy:0,fallFrom:pos.y,glintT:0,aim:0,crouch:sniper?.6:0,recoil:0,moveDir:V(),speed:0,headRight:V(1,0,0),
@@ -1927,7 +1950,19 @@ function spawnEnemy(pos,type){
   poseAlive(e,0); placeParts(e); for(let i=0;i<NJ;i++)e.jprev[i].copy(e.jp[i]);
   enemies.push(e); return e;
 }
-function removeEnemy(e){scene.remove(e.root);scene.remove(e.gun.g);if(e.glint)scene.remove(e.glint);if(e.pool)e.pool.life=0;}
+// soldiers are pre-built during loading and recycled, so a new wave never stalls the game
+const POOL={rifle:[],sniper:[]};
+function getSoldier(type){
+  const b=POOL[type].pop()||makeSoldier(type);
+  b.root.visible=true; const g=b.gun.g; const pi=props.findIndex(p=>p.g===g); if(pi>=0)props.splice(pi,1);
+  if(g.parent!==scene)scene.add(g); g.visible=true; g.rotation.set(0,0,0); if(b.gun.lamp)b.gun.lamp.visible=mode==='night';
+  return b;
+}
+function removeEnemy(e){
+  e.root.visible=false; const pi=props.findIndex(p=>p.g===e.gun.g); if(pi>=0)props.splice(pi,1); e.gun.g.visible=false;
+  if(e.glint)scene.remove(e.glint); if(e.pool)e.pool.life=0;
+  POOL[e.type].push({root:e.root,parts:e.parts,gun:e.gun,variant:e.variant});
+}
 // ---------- alive animation (procedural locomotion + two-bone IK, aiming, recoil, flinch) ----------
 const E_f=V(),E_r=V(),E_tu=V(),E_gd=V(),E_tmp=V(),E_tmp2=V(),E_pole=V(),E_q=new THREE.Quaternion();
 function poseAlive(e,dt){
@@ -2366,6 +2401,7 @@ Object.assign(sfx,{
   rack(){if(!AC)return;const t=AC.currentTime,b=bus(null,.15);nz(b,t,.06,'bandpass',1500,0,3,.45);nz(b,t+.12,.06,'bandpass',2200,0,3,.5);},
 });
 
+await loadStep('رویش چمن',72);
 // =====================================================================
 // GRASS — 48k wind-swayed blades around the player; burns with the scorch map, absent under structures
 // =====================================================================
@@ -2644,7 +2680,35 @@ function updateLampLights(){
 }
 const stealthBar=$('stealth').firstChild,stealthT=$('stealthT'),statusEl=$('status');
 scene.traverse(o=>{if(o.isLight)o.layers.enable(1);}); muzzleLight.layers.enableAll(); pFlash.layers.set(0);
+// ---------- warm-up: build every variant, compile every shader, upload every texture, in day and night ----------
+async function warmup(){
+  await loadStep('ساخت چهره‌ها',76);
+  for(const tone of ['#c49a84','#a57c62','#7a5642','#d6b29c']){for(const bd of [0,.6,1])for(const bl of [0,1])faceMat(tone,bd,bl);await loadStep('ساخت چهره‌ها',76);}
+  for(let i=0;i<16;i++){const b=makeSoldier(i<13?'rifle':'sniper');b.root.visible=true;b.gun.g.position.set(rnd(-3,3),1,rnd(-3,3));POOL[i<13?'rifle':'sniper'].push(b);if(i%4===3)await loadStep('ساخت سربازها',80+i/2);}
+  // one of every transient effect, in front of the camera
+  const c=camera.position.clone().add(V(0,0,-4));
+  spawnSprite({type:'fire',pos:c,life:.6,s0:1,s1:1});spawnSprite({type:'smoke',pos:c,life:.6,s0:1,s1:1});spark(c,V(0,1,0),.5);spawnChip('cblock',.1,c,V());spawnChip('brass',.02,c,V());spawnChip('blood',.02,c,V());
+  const ds=[addDecal(c,V(0,0,1),.5,'blood',null),addDecal(c,V(0,0,1),.5,'hole',null),addDecal(c,V(0,0,1),.5,'pool',null)];
+  shockwave(c,1,true); flashI=10; fireLight.intensity=1; muzzle.visible=true; muzzleLight.intensity=1;
+  const hidden=[];scene.traverse(o=>{if(!o.visible){o.visible=true;hidden.push(o);}});
+  const tex=new Set();scene.traverse(o=>{const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];for(const m of ms)for(const k of ['map','normalMap','roughnessMap','emissiveMap'])if(m[k])tex.add(m[k]);});
+  for(const tx of tex) renderer.initTexture(tx);
+  await loadStep('کامپایل شیدرها',90);
+  for(const m of ['night','day']){
+    setMode(m); flashOn=m==='night'; nvOn=m==='night'; camera.updateMatrixWorld(); syncVmCam();
+    renderer.compile(scene,camera); renderer.compile(scene,vmCam);
+    for(const q of [0,2]){const oq=quality;quality=q;renderFrame();quality=oq;}
+    await loadStep(m==='night'?'آماده‌سازی حالت شب':'آماده‌سازی حالت روز',m==='night'?94:98);
+  }
+  for(const o of hidden)o.visible=false;
+  for(const b of [...POOL.rifle,...POOL.sniper]){b.root.visible=false;b.gun.g.visible=false;}
+  for(const d of ds)d.life=0; for(const sp of sprites)sp.age=sp.life=1e-3; flashI=0; muzzle.visible=false;
+  flashOn=false; nvOn=false; setMode('day'); renderer.domElement.style.filter='';
+  await loadStep('آماده!',100);
+  const L=document.getElementById('loading'); L.style.opacity=0; setTimeout(()=>L.remove(),650); startEl.style.display='flex';
+}
 setMode('day');
+await warmup();
 tick();
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 window.__game={explode,player,blocks,active,enemies,camera,V,setWeapon,startReload,shoot,mb,keys,get state(){return {weapon,ads,reloadT,crouch,slideT,lean}},setLocked(v){locked=v},nextWave,crouchKey};

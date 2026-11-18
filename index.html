@@ -242,7 +242,7 @@ function addBlock(geom,mat,sx,sy,sz,x,y,z,rot=null,col=true,opt={}){
     pts:new Float32Array(pts),ax:[V(),V(),V()],box:new THREE.Box3(),col,hp:HP[mat]||60,alive:true,
     color:new THREE.Color().setScalar(rnd(.8,1.05)),im:null,idx:0,stamp:0,cells:[],
     state:'static',v:V(),w:V(),sleepT:0,life:0,startPos:V(),wokeAbove:false,burn:0,emit:0,
-    orig:V(x,y,z),parent:opt.parent||null,kids:null,lp:null,lq:null,group:opt.group||0,noSelf:!!opt.noSelf,hang:!!opt.hang};
+    orig:V(x,y,z),bonds:[],frag:false,parent:opt.parent||null,kids:null,lp:null,lq:null,group:opt.group||0,noSelf:!!opt.noSelf,hang:!!opt.hang};
   updateFrame(b); blocks.push(b);
   if(b.parent){const P=b.parent;(P.kids??=[]).push(b);const iq=P.quat.clone().invert();b.lp=b.pos.clone().sub(P.pos).applyQuaternion(iq);b.lq=iq.multiply(b.quat);b.state='attached';}
   return b;
@@ -516,7 +516,7 @@ function nearby(minx,minz,maxx,maxz){
 for(const b of blocks) gridInsert(b);
 
 // ---------- body state changes ----------
-const MAXA=300,HARDA=380;
+const MAXA=300,HARDA=440;let supportDirty=false,supportT=0;
 function detach(k){const P=k.parent;if(!P)return;k.parent=null;if(P.kids)P.kids.splice(P.kids.indexOf(k),1);k.state='static';if(P.state==='active'){k.cells.length=0;gridInsert(k);}}
 function followParent(P){if(!P.kids)return;for(const k of P.kids){k.pos.copy(k.lp).applyQuaternion(P.quat).add(P.pos);k.quat.copy(P.quat).multiply(k.lq);updateFrame(k);k.im.setMatrixAt(k.idx,_mx.compose(k.pos,k.quat,k.scale));dirtyIM.add(k.im);}}
 function activate(b){
@@ -524,7 +524,7 @@ function activate(b){
   if(b.parent) detach(b);
   gridRemove(b); pending.delete(b);
   if(b.kids) for(const k of b.kids) gridRemove(k);
-  b.state='active'; active.push(b); b.startPos.copy(b.pos); b.wokeAbove=false; b.sleepT=0; b.life=0;
+  b.state='active'; active.push(b); b.startPos.copy(b.pos); b.wokeAbove=false; b.sleepT=0; b.life=0; b.vs=b.ws=1; supportDirty=true;
 }
 function wake(b,hard=false){
   if(!b.alive) return false; if(b.state==='active') return true;
@@ -551,6 +551,8 @@ function hideBlock(b){
   if(b.kids){for(const k of [...b.kids]){detach(k);if(wake(k,true)){k.v.copy(b.v);k.w.copy(b.w).add(rdir());}}}
   pending.delete(b);
   b.im.setMatrixAt(b.idx,ZERO); dirtyIM.add(b.im);
+  for(const bd of b.bonds) bd.ok=false; supportDirty=true;
+  if(b.frag) fragFree(b);
   wakeAbove(b);
   for(const c of c4s) if(c.block===b){c.block=null;c.fall=true;}
 }
@@ -634,7 +636,7 @@ function step(dt){
   // prepare (bottom-up order: support propagates from the ground in one sweep)
   const cs=cPool.slice(0,nC).sort((x,y)=>x.p.y-y.p.y); for(let i=0;i<nC;i++)cPool[i]=cs[i];
   for(let i=0;i<nC;i++){
-    const c=cPool[i]; c.dyn=!!(c.B&&c.B.state==='active');
+    const c=cPool[i]; c.dyn=!!(c.B&&c.B.state==='active'); c.A.touch=true; if(c.dyn)c.B.touch=true;
     if(c.dyn&&c.n.y<0){const t=c.A;c.A=c.B;c.B=t;c.n.negate();} // keep A as the upper body
     const A=c.A,B=c.B;
     c.rA.subVectors(c.p,A.pos); if(c.dyn) c.rB.subVectors(c.p,B.pos);
@@ -647,11 +649,12 @@ function step(dt){
     if(vn<-2.5) c.bias=Math.max(c.bias,-vn*REST);
     const o=cache.get(c.key); c.jn=c.jt1=c.jt2=0;
     if(o){c.jn=o[0]*.85;c.jt1=o[1]*.85;c.jt2=o[2]*.85;applyImp(c,c.n,c.jn);applyImp(c,c.t1,c.jt1);applyImp(c,c.t2,c.jt2);}
-    if(B&&B.state==='sleep'&&vn<-1.8) wake(B);
+    if(B&&B.state==='sleep'&&vn<-2.5&&A.mass*-vn>B.mass*2) wake(B);   // only a real hit disturbs a resting piece
     if(vn<-4&&A.mass>.06&&thudBudget>0){thudBudget--;sfx.thud(c.p,Math.min(1,-vn/14)*Math.min(1,A.mass));}
   }
-  const iters=active.length>160?8:12;
-  for(let it=0;it<iters;it++) for(let i=0;i<nC;i++){
+  prepBonds(dt);
+  const iters=active.length>220?7:active.length>120?9:12;
+  for(let it=0;it<iters;it++){ solveBonds(dt); for(let i=0;i<nC;i++){
     const c=cPool[i];
     relVel(c,_a);
     let j=c.kn*(c.bias-_a.dot(c.n)); const jn=Math.max(0,c.jn+j); j=jn-c.jn; c.jn=jn;
@@ -659,7 +662,8 @@ function step(dt){
     relVel(c,_a); const mf=MU*c.jn;
     let jt=-c.kt1*_a.dot(c.t1); let nt=Math.max(-mf,Math.min(mf,c.jt1+jt)); jt=nt-c.jt1; c.jt1=nt; if(jt) applyImp(c,c.t1,jt);
     jt=-c.kt2*_a.dot(c.t2); nt=Math.max(-mf,Math.min(mf,c.jt2+jt)); jt=nt-c.jt2; c.jt2=nt; if(jt) applyImp(c,c.t2,jt);
-  }
+  }}
+  breakBonds(dt);
   // shock propagation: lower body acts as immovable so tall stacks don't sag
   for(let it=0;it<3;it++) for(let i=0;i<nC;i++){
     const c=cPool[i]; if(!c.dyn||c.n.y<.5) continue;
@@ -674,7 +678,9 @@ function step(dt){
   // integrate
   for(let i=active.length-1;i>=0;i--){
     const b=active[i];
-    if(b.v.lengthSq()<.04&&b.w.lengthSq()<.06){b.v.multiplyScalar(.9);b.w.multiplyScalar(.88);} else {b.v.multiplyScalar(.999); b.w.multiplyScalar(.985);}
+    if(b.v.lengthSq()<.04&&b.w.lengthSq()<.06){b.v.multiplyScalar(.9);b.w.multiplyScalar(.88);}
+    else if(b.touch&&b.v.lengthSq()<.12){b.v.multiplyScalar(.97);b.w.multiplyScalar(.9);}   // rolling resistance: resting pieces stop rocking
+    else {b.v.multiplyScalar(.999); b.w.multiplyScalar(b.touch?.965:.985);}
     const sp=b.v.length(); if(sp>40) b.v.multiplyScalar(40/sp);
     b.pos.addScaledVector(b.v,dt);
     const q=b.quat,w=b.w,hd=.5*dt;
@@ -686,8 +692,10 @@ function step(dt){
     b.life+=dt;
     if(!b.wokeAbove&&b.pos.distanceToSquared(b.startPos)>.0025){b.wokeAbove=true;wakeAbove(b);}
     const lv=active.length>MAXA*.8?.16:.03;
-    if(b.v.lengthSq()<lv&&b.w.lengthSq()<.09) b.sleepT+=dt; else b.sleepT=0;
-    if((b.sleepT>.35&&b.life>0)||(b.life>14&&sp<1)) sleepBody(b);
+    b.vs=(b.vs??1)*.8+b.v.lengthSq()*.2; b.ws=(b.ws??1)*.8+b.w.lengthSq()*.2;   // smoothed motion energy
+    if(b.vs<lv&&b.ws<.16) b.sleepT+=dt; else b.sleepT=0;
+    if(((b.sleepT>.35&&b.life>0)||(b.life>6&&sp<.5&&b.w.lengthSq()<2))&&b.touch) sleepBody(b);
+    b.wasTouch=b.touch; b.touch=false;
   }
 }
 function relVel(c,out){
@@ -706,13 +714,182 @@ function applyImp(c,dir,j){
   _b.crossVectors(c.rA,dir).multiplyScalar(j); invIw(A,_b,_c); A.w.add(_c);
   if(c.dyn){const B=c.B; B.v.addScaledVector(dir,-j*B.invM); _b.crossVectors(c.rB,dir).multiplyScalar(-j); invIw(B,_b,_c); B.w.add(_c);}
 }
+
+// =====================================================================
+// MORTAR / WELD BONDS — touching pieces are glued with breakable 3-point welds:
+// walls fall as slabs and crack apart on impact, the crane is one welded frame, planks are nailed
+// =====================================================================
+const BOND_STR={cblock:55,sblock:65,stone:65,plank:26,wood:26,roof:20,rust:2500,dark:900,concrete:2500,bark:900};
+const BMAT=new Set(['cblock','sblock','stone','plank','wood','roof']);
+function bondable(a,b){
+  if(!a.col||!b.col||a.parent||b.parent||a.noSelf||b.noSelf||a.frag||b.frag) return false;
+  if(a.group||b.group) return a.group===b.group;
+  return BMAT.has(a.mat)&&BMAT.has(b.mat);
+}
+const _iqa=new THREE.Quaternion();
+function makeBond(a,b){
+  const e=.03,mn=V(Math.max(a.box.min.x,b.box.min.x)-e,Math.max(a.box.min.y,b.box.min.y)-e,Math.max(a.box.min.z,b.box.min.z)-e),
+    mx=V(Math.min(a.box.max.x,b.box.max.x)+e,Math.min(a.box.max.y,b.box.max.y)+e,Math.min(a.box.max.z,b.box.max.z)+e);
+  const c=mn.clone().add(mx).multiplyScalar(.5),ext=mx.clone().sub(mn).multiplyScalar(.5);
+  const ax=[['x',ext.x],['y',ext.y],['z',ext.z]].sort((p,q)=>q[1]-p[1]);
+  const u=V(),v=V();u[ax[0][0]]=Math.max(.02,ax[0][1]-e)*.7;v[ax[1][0]]=Math.max(.02,ax[1][1]-e)*.7;
+  const pts=[c.clone().add(u).add(v),c.clone().sub(u).add(v),c.clone().sub(v)];
+  const area=4*Math.max(.02,ax[0][1]-e)*Math.max(.02,ax[1][1]-e);
+  const same=a.group&&a.group===b.group, str=(same?Math.max:Math.min)(BOND_STR[a.mat]??50,BOND_STR[b.mat]??50)*(same?1:Math.max(.35,Math.min(2.5,area/.25)));
+  const bd={a,b,la:[],lb:[],str,ok:true,st:0,n:pts.length,rA:pts.map(()=>V()),rB:pts.map(()=>V()),err:pts.map(()=>V()),acc:pts.map(()=>V()),k:pts.map(()=>[0,0,0]),dyn:false,A:null,B:null};
+  _iqa.copy(a.quat).invert(); for(const p of pts) bd.la.push(p.clone().sub(a.pos).applyQuaternion(_iqa));
+  _iqa.copy(b.quat).invert(); for(const p of pts) bd.lb.push(p.clone().sub(b.pos).applyQuaternion(_iqa));
+  a.bonds.push(bd); b.bonds.push(bd); return bd;
+}
+let nBonds=0;
+for(const a of blocks){
+  if(!a.col) continue;
+  for(const b of query(a.box.min.x-.04,a.box.min.z-.04,a.box.max.x+.04,a.box.max.z+.04))
+    if(b.id>a.id&&ovl(a.box,b.box,.03)&&bondable(a,b)){makeBond(a,b);nBonds++;}
+}
+const bondList=[];let bstamp=0;
+const AXV=[V(1,0,0),V(0,1,0),V(0,0,1)],_bw=V(),_bv=V();
+function bVel(bd,i,out){ // relative velocity of the two anchor points
+  const A=bd.A; out.crossVectors(A.w,bd.rA[i]).add(A.v);
+  if(bd.dyn){const B=bd.B;_bv.crossVectors(B.w,bd.rB[i]).add(B.v);out.sub(_bv);}
+  return out;
+}
+function bK(bd,i,dir){const A=bd.A;let k=A.invM;_b.crossVectors(bd.rA[i],dir);invIw(A,_b,_c);_b.crossVectors(_c,bd.rA[i]);k+=_b.dot(dir);
+  if(bd.dyn){const B=bd.B;k+=B.invM;_b.crossVectors(bd.rB[i],dir);invIw(B,_b,_c);_b.crossVectors(_c,bd.rB[i]);k+=_b.dot(dir);}return 1/k;}
+function bImp(bd,i,dir,j){const A=bd.A;A.v.addScaledVector(dir,j*A.invM);_b.crossVectors(bd.rA[i],dir).multiplyScalar(j);invIw(A,_b,_c);A.w.add(_c);
+  if(bd.dyn){const B=bd.B;B.v.addScaledVector(dir,-j*B.invM);_b.crossVectors(bd.rB[i],dir).multiplyScalar(-j);invIw(B,_b,_c);B.w.add(_c);}}
+function prepBonds(dt){
+  bondList.length=0; bstamp++;
+  for(const b of active) for(const bd of b.bonds){
+    if(!bd.ok||bd.st===bstamp) continue; bd.st=bstamp;
+    const a=bd.a,c=bd.b; if(!a.alive||!c.alive){bd.ok=false;continue;}
+    const aD=a.state==='active',cD=c.state==='active';
+    if((!aD&&pending.has(a))||(!cD&&pending.has(c))) continue;   // never hang from a piece that is about to fall
+    bd.A=aD?a:c; bd.B=aD?c:a; bd.dyn=aD&&cD;
+    const la=aD?bd.la:bd.lb, lb=aD?bd.lb:bd.la;
+    for(let i=0;i<bd.n;i++){
+      _bw.copy(la[i]).applyQuaternion(bd.A.quat); bd.rA[i].copy(_bw); _bw.add(bd.A.pos);
+      bd.rB[i].copy(lb[i]).applyQuaternion(bd.B.quat); _bv.copy(bd.rB[i]).add(bd.B.pos);
+      bd.err[i].subVectors(_bw,_bv); bd.acc[i].set(0,0,0);
+      for(let k=0;k<3;k++) bd.k[i][k]=bK(bd,i,AXV[k]);
+    }
+    bondList.push(bd);
+  }
+}
+function solveBonds(dt){
+  const beta=.25/dt;
+  for(const bd of bondList) for(let i=0;i<bd.n;i++){
+    bVel(bd,i,_a);
+    for(let k=0;k<3;k++){
+      const e=k===0?bd.err[i].x:k===1?bd.err[i].y:bd.err[i].z, vv=k===0?_a.x:k===1?_a.y:_a.z;
+      const bias=Math.max(-2,Math.min(2,beta*e));
+      const j=-(vv+bias)*bd.k[i][k]; if(!j) continue;
+      bImp(bd,i,AXV[k],j); if(k===0)bd.acc[i].x+=j;else if(k===1)bd.acc[i].y+=j;else bd.acc[i].z+=j;
+      bVel(bd,i,_a);
+    }
+  }
+}
+let crackBudget=0;
+function breakBonds(dt){
+  crackBudget=Math.min(4,crackBudget+dt*10);
+  for(const bd of bondList){
+    let F=0; for(let i=0;i<bd.n;i++) F+=bd.acc[i].length(); F/=dt;
+    if(F>bd.str){bd.ok=false;supportDirty=true;
+      if(crackBudget>=1&&F>bd.str*1.2){crackBudget--;const p=bd.A.pos.clone().add(bd.rA[0]);sfx.crack(p,BMAT.has(bd.A.mat)&&bd.A.mat!=='plank'&&bd.A.mat!=='roof'&&bd.A.mat!=='wood');
+        const dc=bd.A.mat==='plank'||bd.A.mat==='wood'||bd.A.mat==='roof'?[.42,.32,.2]:[.6,.58,.54];
+        spawnSprite({type:'smoke',pos:p,vel:rdir().multiplyScalar(.4),life:rnd(1,2),s0:.3,s1:1.4,op:.45,drag:1.2,lift:.1,c0:new THREE.Color(...dc),c1:new THREE.Color(...dc),fadeIn:.05});
+        if(Math.random()<.5)spawnChip(bd.A.mat,rnd(.04,.09),p,rdir().multiplyScalar(rnd(1,3)));}}
+  }
+}
+// ---------- global support graph ----------
+// Every resting piece must reach the ground through pieces that carry it: sitting on top, or glued sideways
+// for a short span (masonry overhangs a little, steel frames a lot). Anything that can't is woken and falls.
+const LAT={cblock:2,sblock:2,stone:2,plank:4,wood:3,roof:3,rust:80,dark:80,concrete:80,bark:1,leaf:1};
+const _cost=[];
+function restingOnSomething(b){
+  const bx=b.box;
+  for(const o of nearby(bx.min.x,bx.min.z,bx.max.x,bx.max.z)){
+    if(o===b||!o.alive||o.parent) continue; const ob=o.box;
+    if(ob.max.y<bx.min.y-.08||ob.max.y>bx.min.y+.1||ob.min.x>bx.max.x-.03||ob.max.x<bx.min.x+.03||ob.min.z>bx.max.z-.03||ob.max.z<bx.min.z+.03) continue;
+    if(o.state==='active'&&(o.v.y<-.6||o.v.lengthSq()>1.5)) continue;
+    return true;
+  }
+  return false;
+}
+function bonded(a,b){for(const bd of a.bonds) if(bd.ok&&(bd.a===b||bd.b===b)) return true; return false;}
+function supportCheck(){
+  const N=blocks.length; if(_cost.length<N) for(let i=_cost.length;i<N;i++)_cost.push(0);
+  for(let i=0;i<N;i++)_cost[i]=9999;
+  const settled=b=>b.alive&&!b.parent&&(b.state!=='active'||(b.wasTouch&&b.v.lengthSq()<.15&&b.w.lengthSq()<.5&&b.life>.25));
+  const buckets=[[]];
+  for(const b of blocks) if(settled(b)&&b.box.min.y<.08){_cost[b.id]=0;buckets[0].push(b);}
+  for(let c=0;c<buckets.length;c++){const q=buckets[c];if(!q)continue;
+    for(let i=0;i<q.length;i++){const s=q[i];if(_cost[s.id]!==c)continue;const bx=s.box,e=.05;
+      for(const o of nearby(bx.min.x-e,bx.min.z-e,bx.max.x+e,bx.max.z+e)){
+        if(o===s||_cost[o.id]<=c||!settled(o)||!ovl(bx,o.box,e)) continue;
+        let nc;
+        const onTop=o.box.min.y>=bx.max.y-.12&&o.pos.y>s.pos.y&&o.box.min.x<bx.max.x-.02&&o.box.max.x>bx.min.x+.02&&o.box.min.z<bx.max.z-.02&&o.box.max.z>bx.min.z+.02;
+        if(onTop) nc=c;                                                         // sits on s
+        else if(bonded(s,o)) nc=c+1;                                            // glued beside / hanging below
+        else if(o.state!=='static'&&o.pos.y>s.pos.y+.03) nc=c;                  // loose debris leaning on s
+        else continue;
+        if(nc>((o.group&&o.group===s.group)?80:(LAT[o.mat]??2))) continue;
+        if(nc<_cost[o.id]){_cost[o.id]=nc;(buckets[nc]??=[]).push(o);}
+      }
+    }
+  }
+  for(const b of blocks){
+    if(!b.alive||b.parent||b.state==='active'||_cost[b.id]<9999) continue;
+    if(restingOnSomething(b)) continue;            // its direct support is only settling slowly: leave it
+    for(const bd of b.bonds) bd.str*=.6;          // whatever still holds it is being overloaded
+    if(wake(b,true)) b.v.add(rdir().multiplyScalar(.05));
+  }
+}
+// ---------- physical fragments (blocks blown into smaller rigid pieces) ----------
+const fragPools={};
+for(const m of ['cblock','sblock','plank','roof','wood','rust','concrete','bark','stone']){
+  const im=new THREE.InstancedMesh(G.cube,M[m],140);im.castShadow=im.receiveShadow=true;im.frustumCulled=false;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  for(let i=0;i<140;i++){im.setMatrixAt(i,ZERO);im.setColorAt(i,new THREE.Color(1,1,1));}
+  scene.add(im); fragPools[m]={im,free:[...Array(140).keys()],live:[]};
+}
+function fragFree(b){const p=fragPools[b.mat];if(!p)return;p.free.push(b.idx);const i=p.live.indexOf(b);if(i>=0)p.live.splice(i,1);}
+function spawnFrag(mat,sx,sy,sz,pos,quat,vel,w,tint){
+  const p=fragPools[mat]; if(!p) return null;
+  if(!p.free.length){const old=p.live.find(f=>f.state!=='active')||p.live[0];if(!old)return null;hideBlock(old);}
+  const b=addBlock('cube',mat,sx,sy,sz,pos.x,pos.y,pos.z,null,Math.max(sx,sy,sz)>.3,{});
+  b.quat.copy(quat); updateFrame(b); b.frag=true; b.im=p.im; b.idx=p.free.pop(); p.live.push(b);
+  b.color.setScalar(tint??rnd(.75,1)); p.im.setColorAt(b.idx,b.color); p.im.instanceColor.needsUpdate=true;
+  b.state='static'; b.cells.length=0;
+  if(!wake(b,true)){fragFree(b);b.alive=false;return null;}
+  b.v.copy(vel); b.w.copy(w);
+  return b;
+}
+// split a block into 2-4 smaller boxes along its longest axes
+function fracture(b,from,speed,maxN=4){
+  const s=b.scale,axes=[['x',s.x],['y',s.y],['z',s.z]].sort((p,q)=>q[1]-p[1]);
+  const n1=axes[0][1]>.6?2:1,n2=axes[1][1]>.45&&maxN>2?2:1,made=[];
+  let cut1=rnd(.35,.65),cut2=rnd(.35,.65);
+  for(let i=0;i<n1;i++)for(let j=0;j<n2;j++){
+    const f1=n1===1?1:(i?1-cut1:cut1),f2=n2===1?1:(j?1-cut2:cut2);
+    const sz={x:s.x,y:s.y,z:s.z};sz[axes[0][0]]*=f1*.96;sz[axes[1][0]]*=f2*.96;
+    const off=V();off[axes[0][0]]=n1===1?0:(i?cut1*s[axes[0][0]]/2:-(1-cut1)*s[axes[0][0]]/2);off[axes[1][0]]=n2===1?0:(j?cut2*s[axes[1][0]]/2:-(1-cut2)*s[axes[1][0]]/2);
+    const p=off.applyQuaternion(b.quat).add(b.pos);
+    const dir=p.clone().sub(from);dir.y+=.5;dir.normalize().add(rdir().multiplyScalar(.35)).normalize();
+    const q=b.quat.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(rnd(-.15,.15),rnd(-.15,.15),rnd(-.15,.15))));
+    const f=spawnFrag(b.mat,sz.x,sz.y,sz.z,p,q,dir.multiplyScalar(speed*rnd(.7,1.2)),rdir().multiplyScalar(rnd(2,10)),b.color.r*rnd(.9,1));
+    if(f)made.push(f);
+  }
+  return made;
+}
+
 let physAcc=0;
 function physics(dt){
   thudBudget=Math.min(6,thudBudget+dt*14);
   if(pending.size){
-    if(active.length>=MAXA){let need=pending.size;for(let i=active.length-1;i>=0&&need>0;i--){const b=active[i];if(b.life>.3&&b.v.lengthSq()<.5){sleepBody(b);need--;}}}
-    for(const b of pending){if(active.length>=MAXA)break;activate(b);}
+    if(active.length>=MAXA){let need=pending.size;for(let i=active.length-1;i>=0&&need>0;i--){const b=active[i];if(b.life>.3&&b.wasTouch&&b.v.lengthSq()<.1&&b.w.lengthSq()<.1&&b.sleepT>.1){sleepBody(b);need--;}}}
+    const pl=[...pending].sort((x,y)=>x.box.min.y-y.box.min.y);for(const b of pl){if(active.length>=MAXA)break;activate(b);}
   }
+  supportT-=dt; if(supportDirty&&supportT<=0){supportT=.12;supportDirty=false;supportCheck();}
   physAcc+=dt; let n=0;
   while(physAcc>=1/60&&n<2){step(1/60);physAcc-=1/60;n++;}
   if(n===2) physAcc=0;
@@ -972,6 +1149,7 @@ const sfx={
     if(mat==='rust') tone(b,t,.18,'triangle',2900,2100,.07);},
   crackle(p){if(!AC)return;const t=AC.currentTime;nz(bus(p,.15,3),t,rnd(.01,.03),'bandpass',rnd(1500,4500),0,1,rnd(.06,.16));},
   rumble(p){if(!AC)return;const t=AC.currentTime+.3,b=bus(p,.9,12);nz(b,t,5,'lowpass',300,60,.8,.9,1.2);tone(b,t,4,'sine',45,25,.6,1);for(let i=0;i<40;i++)nz(b,t+rnd(.5,4.5),rnd(.04,.12),'lowpass',rnd(300,900),0,1,rnd(.1,.35));},
+  crack(p,stone){if(!AC)return;const t=AC.currentTime,b=bus(p,.4,5);nz(b,t,.06,'bandpass',stone?2600:1400,0,2,.35);nz(b,t+.01,.25,'lowpass',stone?900:600,200,1,.25,.01);if(!stone)tone(b,t,.08,'triangle',rnd(300,500),150,.15);},
   thud(p,s=1){if(!AC)return;const t=AC.currentTime,b=bus(p,.35,5);tone(b,t,.2,'sine',rnd(60,110),38,.45*s);nz(b,t,.14,'lowpass',rnd(500,900),0,1,.3*s);nz(b,t,.04,'bandpass',rnd(1500,3000),0,2,.12*s);},
 };
 const _lf=V();
@@ -1008,8 +1186,11 @@ function placeC4(){
 }
 function detonate(c){const i=c4s.indexOf(c);if(i<0)return;c4s.splice(i,1);scene.remove(c.m);explode(c.m.position.clone(),5);}
 function detonateAll(){if(!c4s.length)return;sfx.beep();[...c4s].forEach((c,i)=>timers.push({t:.25+i*.18,fn:()=>detonate(c)}));}
+let fragBudget=0;
 function shatter(b,pos){
   hideBlock(b);
+  if(fragBudget>0&&fragPools[b.mat]&&b.geom==='cube'){fragBudget-=fracture(b,pos,rnd(10,20)).length;
+    for(let k=0;k<2;k++)spawnChip(b.mat,rnd(.05,.14),b.pos.clone().add(rdir().multiplyScalar(.2)),rdir().multiplyScalar(rnd(8,18)).add(V(0,4,0)));return;}
   const n=b.mass>.3?3:2,s=Math.cbrt(b.scale.x*b.scale.y*b.scale.z);
   for(let k=0;k<n;k++){const dir=b.pos.clone().sub(pos).normalize().add(rdir().multiplyScalar(.6));dir.y+=rnd(.2,.8);
     spawnChip(b.mat,Math.min(.35,s*rnd(.2,.35)),b.pos.clone().add(rdir().multiplyScalar(.2)),dir.multiplyScalar(rnd(8,22)),Math.random()<.25?rnd(.6,1.6):0);}
@@ -1069,11 +1250,13 @@ function explode(pos,R){
   // pieces: shatter the core, fling everything else with physics
   const list=nearby(pos.x-R*3.4,pos.z-R*3.4,pos.x+R*3.4,pos.z+R*3.4)
     .map(b=>({b,dd:b.box.distanceToPoint(pos)})).filter(o=>o.b.alive&&o.dd<R*3.4).sort((a,b)=>a.dd-b.dd);
+  fragBudget=70;
+  for(const {b,dd} of list){ if(dd<R*1.3) for(const bd of b.bonds) bd.ok=false; else if(dd<R*1.9) for(const bd of b.bonds) if(Math.random()<.5) bd.ok=false; else bd.str*=.5; }
+  supportDirty=true;
   for(const {b,dd} of list){
     if(!b.alive) continue;
     if(dd>R*1.8){ // shock wave loosens masonry further out: it becomes fully dynamic and settles or collapses on its own
-      if(MASONRY.has(b.mat)&&b.state!=='active'&&wake(b)){const f=1-(dd-R*1.8)/(R*1.6);const dir=b.pos.clone().sub(pos);dir.y=0;dir.normalize();
-        b.v.addScaledVector(dir,f*rnd(.4,1.6)/Math.cbrt(Math.max(.2,b.mass)));b.w.add(rdir().multiplyScalar(f*.4));}
+      if(b.state==='active'){const dir=b.pos.clone().sub(pos).normalize();b.v.addScaledVector(dir,(1-(dd-R*1.8)/(R*1.6))*2);}
       continue;}
     tintBlock(b,.35+.65*dd/(R*1.8));
     if(dd<R*.32*rnd(.7,1.3)||(b.mat==='leaf'&&dd<R*.8)){shatter(b,pos);continue;}
@@ -2070,9 +2253,9 @@ grassMat.onBeforeCompile=sh=>{
     vec2 wp=uCam.xz+mod(aOff.xy-uCam.xz+${GR/2}.,${GR}.)-${GR/2}.;
     vec2 uvB=vec2((wp.x+100.)/200.,1.-(wp.y+100.)/200.);
     float burn=texture2D(uBurn,uvB).a, mask=texture2D(uMask,uvB).r;
-    float far=1.-smoothstep(${GR/2-10}.,${GR/2}.,length(wp-uCam.xz));
+    float far=1.-smoothstep(${GR/2-14}.,${GR/2-1}.,length(wp-uCam.xz));
     float h=(.12+.3*aOff.w*aOff.w+.08*aOff.z)*(1.-burn*.8)*mask*far; if(abs(wp.x)>99.||abs(wp.y)>99.)h=0.;
-    float ang=aOff.z*6.2832; vec3 p=position; p.x*=.006+.006*aOff.w; p.y*=h;
+    float ang=aOff.z*6.2832; vec3 p=position; p.x*=(.006+.006*aOff.w)*far; p.y*=h; if(h<.02)p=vec3(0.,-1.,0.);
     float t=position.y;
     float wind=sin(uTime*1.6+wp.x*.31+wp.y*.23)*.22+sin(uTime*3.3+wp.x*1.7+wp.y*.9)*.06;
     vec2 bend=vec2(wind,.25*(aOff.z-.5))*t*t*h*1.6;

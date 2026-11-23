@@ -540,14 +540,20 @@ const LADDERS=[];
   box(.05,16,.05,x-20,H+2-8,z,'dark',{group,hang:true});
   box(2.5,1.2,1.5,x-20,H-14.6,z,'wood',{group,hang:true});
   // access ladder on the +z face with a safety cage of hoops and bars
-  const zl=z+L/2+.22, cz=zl+.42, top=H+2.2, crane=blocks.filter(b=>b.group===group&&b.col);
+  const zl=z+L/2+.22, cz=zl+.42, top=H+1.1, crane=blocks.filter(b=>b.group===group&&b.col);
   const host=p=>{let best=null,bd=1e9;for(const b of crane){const d=b.pos.distanceToSquared(p);if(d<bd){bd=d;best=b;}}return best;};
   const kid=(geom,sx,sy,sz,px,py,pz,rot)=>addBlock(geom,'rust',sx,sy,sz,px,py,pz,rot,false,{group,noSelf:true,parent:host(V(px,py,pz))});
   for(let y=1.2;y<top;y+=1){const h=Math.min(1,top-y);for(const s of [-1,1])kid('cube',.045,h-.01,.045,x+s*.22,y+h/2,zl);}
   let mid=null; for(let y=1.45;y<top;y+=.3){const r=kid('cube',.44,.035,.035,x,y,zl);if(!mid&&y>H/2)mid=r;}
   for(let y=2.6;y<top;y+=1){kid('torus',.9,.9,.9,x,y,cz);
     if(y+1<top) for(const a of [.6,1.57,2.54]) kid('cube',.03,1,.03,x+Math.cos(a)*.45,y+.5,cz+Math.sin(a)*.45);}
-  LADDERS.push({x,zl,nz:-1,y0:0,y1:top,ref:mid,hw:.4});
+  // landing deck at the foot of the cab: steel grating around a hatch the ladder rises through, with a guard rail
+  const dz0=z+L/2+.2,dz1=z+L/2+1.9,dy=H-.1;
+  for(const s of [-1,1]) box(1.15,.12,dz1-dz0,x+s*1.025,dy,(dz0+dz1)/2,'rust',{group});
+  box(.9,.12,dz1-(zl+.95),x,dy,(zl+.95+dz1)/2,'rust',{group});
+  for(const s of [-1,1]) box(.06,1.1,dz1-dz0,x+s*1.6,H+.55,(dz0+dz1)/2,'rust',{group});
+  box(3.2,1.1,.06,x,H+.55,dz1,'rust',{group});
+  LADDERS.push({x,zl,nz:-1,y0:0,y1:H+.05,ref:mid,hw:.4,exit:V(x+1.05,H+.01,zl+.6)});
 })();
 
 // ---------- ruins (south): broken stone-block walls, column drums ----------
@@ -577,7 +583,10 @@ function house(cx,cz,W,D,nF,dir){
   const H=3.2,t=.4,M_=(cx+cz)%2?'sblock':'cblock',FT=.3;
   const zf=cz+dir*D/2, zb=cz-dir*D/2, xL=cx-W/2;
   const nj=Math.ceil(W/4)+1, xs=[...Array(nj).keys()].map(k=>xL+k*W/(nj-1));
-  const holeZ0=Math.min(zb,zb+dir*3.6), holeZ1=Math.max(zb,zb+dir*3.6);
+  const holeZ0=Math.min(zb,zb+dir*3.92), holeZ1=Math.max(zb,zb+dir*3.92);
+  const seg=(ax,ay,az,bx,by,bz,th,mat,col)=>{const a=V(ax,ay,az),d=V(bx,by,bz).sub(a),len=d.length();
+    const e=new THREE.Euler().setFromQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0,1,0),d.clone().normalize()));
+    addBlock('cube',mat,th,len,th,(ax+bx)/2,(ay+by)/2,(az+bz)/2,[e.x,e.y,e.z],col);};
   for(let f=0;f<nF;f++){
     const y0=f*(H+FT), len=W+.4, nw=Math.max(1,Math.floor((W-2)/3.2)), wins=[];
     for(let k=0;k<nw;k++){const c=1.2+(k+.5)*(len-2.4)/nw;wins.push({a:c-.65,b:c+.65,y0:y0+1,y1:y0+2.4});}
@@ -593,12 +602,34 @@ function house(cx,cz,W,D,nF,dir){
     const rows=Math.round((D+.4)/.5),rw=(D+.4)/rows;
     for(let k=0;k<rows;k++){const zc=cz-D/2-.2+(k+.5)*rw;
       for(let j=0;j<nj-1;j++){const a=j?xs[j]:xL-.2,b=j===nj-2?cx+W/2+.2:xs[j+1];
-        const sR=f%2===1; if(!last&&(sR?j===nj-2:j===0)&&zc>holeZ0+.3&&zc<holeZ1&&Math.abs(zc-zb)>.3){addBlock('cube','plank',.5,.1,rw-.005,sR?cx+W/2+.05:xL-.05,yt+.25,zc);continue;}
+        const sR=f%2===1; if(!last&&(sR?j===nj-2:j===0)&&zc+rw/2>holeZ0+.01&&zc-rw/2<holeZ1-.01){const he=sR?cx+W/2-2.55:xL+2.55;
+          const pa=sR?a:he,pb=sR?he:b; if(pb-pa>.1)addBlock('cube','plank',pb-pa-.005,.1,rw-.005,(pa+pb)/2,yt+.25,zc);continue;}
         addBlock('cube','plank',b-a-.005,.1,rw-.005,(a+b)/2,yt+.25,zc);}}
-    if(!last){ const r=.25,fw=1.05,sg=f%2===1?-1:1,xa=f%2===1?cx+W/2:xL,x1=xa+sg*(.35+fw/2),x2=xa+sg*(.35+fw+.1+fw/2),zL=zb+dir*(.2+.6);
-      addBlock('cube',M_,2*fw+.1,1.75-.004,1.2,(x1+x2)/2,y0+.875,zL);                                   // half landing against the back wall
-      for(let i=0;i<6;i++){const h=(i+1)*r;addBlock('cube',M_,fw,h-.004,.3-.004,x1,y0+h/2,zb+dir*(1.4+.15+(5-i)*.3));}   // flight 1 up toward the back
-      for(let j=0;j<7;j++){const h=1.75+(j+1)*r;addBlock('cube',M_,fw,h-.004,.3-.004,x2,y0+h/2,zb+dir*(1.4+.15+j*.3));} } // flight 2 back to the front
+    if(!last){
+      // open U-shaped (dog-leg) stair: 2 × 10 risers of 0.175 m, 0.28 m goings, 1.2 m half landing at the back wall,
+      // open treads on steel stringers, 0.1 m well between the flights, handrails and a guard rail round the stairwell
+      const FF=H+FT,r=FF/20,g=.28,LD=1.2,fw=1.1,sg=f%2===1?-1:1,xa=f%2===1?cx+W/2:xL;
+      const X=v=>xa+sg*(.2+v), Z=u=>zb+dir*(.2+u), c1=X(fw/2), c2=X(fw+.1+fw/2);
+      addBlock('cube','plank',2*fw+.1,.12,LD,(X(0)+X(2*fw+.1))/2,y0+FF/2-.06,Z(LD/2));               // half landing
+      for(const v of [.05,2*fw+.05]) addBlock('cube','rust',.08,FF/2-.12,.08,X(v),y0+(FF/2-.12)/2,Z(LD-.05),null,false);
+      for(let i=1;i<10;i++){                                                                          // flight 1 rises toward the back, flight 2 toward the front
+        addBlock('cube','plank',fw,.05,g+.02,c1,y0+i*r-.025,Z(LD+(9-i)*g+g/2));
+        addBlock('cube','plank',fw,.05,g+.02,c2,y0+FF/2+i*r-.025,Z(LD+(i-1)*g+g/2));
+      }
+      const L1=LD+9*g;
+      for(const v of [0,fw,fw+.1,2*fw+.1]){const up2=v>fw+.05;                                       // stringers
+        seg(X(v+(v<.5||v>2?(v<.5?.04:-.04):(v<1.12?-.04:.04))),y0+(up2?FF/2:0)-.12,Z(up2?LD:L1),X(v+(v<.5||v>2?(v<.5?.04:-.04):(v<1.12?-.04:.04))),y0+(up2?FF:FF/2)-.12,Z(up2?L1:LD),.07,'rust',false);}
+      for(const [v,a0,a1] of [[fw+.05,0,FF/2],[fw+.05,FF/2,FF]]){                                    // handrail on the well side of each flight
+        const fl=a0>0;seg(X(v),y0+a0+.9,Z(fl?LD:L1),X(v),y0+a1+.9,Z(fl?L1:LD),.05,'rust',false);
+        for(let k=0;k<=3;k++){const u=LD+k*3*g,yy=fl?y0+a0+(k*3)*r:y0+a1-(k*3)*r;addBlock('cube','rust',.04,.9,.04,X(v),yy+.45,Z(u),null,false);}}
+      seg(X(0),y0+FF/2+.9,Z(LD),X(2*fw+.1),y0+FF/2+.9,Z(LD),.05,'rust',false);
+      addBlock('cube','plank',2*fw+.1,.1,.56,(X(0)+X(2*fw+.1))/2,yt+.25,Z(L1+.28));                 // nosing strip where the floor was cut back
+      const yr=y0+FF;                                                                                 // guard rails on the floor above
+      addBlock('cube','rust',fw+.15,.06,.06,X((fw+.15)/2),yr+1,Z(L1+.03));
+      for(const k of [0,1]) addBlock('cube','rust',.05,1,.05,X(k*(fw+.1)),yr+.5,Z(L1+.03));
+      addBlock('cube','rust',.06,.06,L1+.06,X(2*fw+.16),yr+1,Z(L1/2));
+      for(let u=0;u<=L1;u+=L1/4) addBlock('cube','rust',.05,1,.05,X(2*fw+.16),yr+.5,Z(u));
+    }
     else wall({x0:xL-.2,z0:zf,x1:cx+W/2+.2,z1:zf,y0:yt+FT,h:.6,t,mat:M_,bh:.6});   // roof parapet
     houseSpots.push(V(cx+1.5,y0+(f?FT:0)+.01,cz+dir*1.2));
     if(last) houseSpots.push(V(cx+1,yt+FT+.01,cz));
@@ -2740,6 +2771,7 @@ function tick(){
   if(!onLadder&&ladderCool<=0&&!player.dead) for(const L of LADDERS){
     if(!L.ref||!L.ref.alive||L.ref.state==='active') continue;
     const dx=player.pos.x-L.x, dz=player.pos.z-L.zl;
+    if(L.exit&&locked&&keys.KeyS&&Math.abs(dx)<1.4&&dz>-.2&&dz<1.3&&Math.abs(player.pos.y-L.exit.y)<.3){onLadder=L;player.pos.set(L.x,L.y1-.3,L.zl+.46);ladderGun=weapon;if(weapon!==0&&weapon!==7)setWeapon(0);break;}
     if(Math.abs(dx)<.5&&dz>0&&dz<.95&&player.pos.y<L.y1-.3&&fwd.z*L.nz>.3&&locked&&keys.KeyW){onLadder=L;ladderGun=weapon;if(weapon!==0&&weapon!==7)setWeapon(0);break;}
   }
   if(onLadder){
@@ -2748,7 +2780,7 @@ function tick(){
     player.pos.y+=up*2.4*dt; player.vel.set(0,0,0); crouch=false; slideT=0; player.onGround=false;
     if(up){rungT-=dt;if(rungT<=0){rungT=.3;sfx.impact('rust',player.pos.clone().add(V(0,1.2,0)));}}
     const leave=()=>{onLadder=null;ladderCool=.6;if(ladderGun!=null&&ladderGun!==weapon)setWeapon(ladderGun);};
-    if(player.pos.y>=L.y1-.15&&up>0){player.pos.set(L.x,L.y1-.2+.02,L.zl-.75);leave();}            // step off onto the platform
+    if(player.pos.y>=L.y1&&up>0){player.pos.copy(L.exit);leave();}            // step off onto the platform
     else if(player.pos.y<=0&&up<0){player.pos.y=0;leave();}
     else if(keys.Space&&locked){player.vel.set(0,2,0).add(V(0,0,-L.nz*3));leave();}
   }

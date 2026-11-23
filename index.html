@@ -387,6 +387,7 @@ function concreteFlight({x,z,axis,dirU,n,r,g,w,yb,floorY}){
 }
 // ---------- plaster + thin paint coat over concrete-block walls (one canvas mask per wall side) ----------
 let PAINT='#cfccc5',CUR_WALL=null;
+const WLINES={},WLINE_INFO={};
 const HOUSE_PAINTS=['#bfb39b','#b6aea2','#bfb18e','#b09a84','#a8ab9e','#bdb9b0','#b49f8a'];
 const PPM=40,plasterFaces=[];
 function plasterWall(alongX,x0,z0,len,y0,h,t){
@@ -471,6 +472,36 @@ function plasterBlast(pos,R){
     g.restore();f.dirty=true;
   }
 }
+// ---------- whole-wall collapse: a wall run tips over about its base as one rigid slab, then vanishes in dust on impact ----------
+const topples=[],dustQ=new Set();
+function startTopple(key,from){
+  const L=(WLINES[key]||[]).filter(b=>b.alive&&!b.parent&&b.state!=='active'&&b.state!=='topple');if(L.length<4)return;
+  const c=V();let minY=1e9;for(const b of L){c.add(b.pos);minY=Math.min(minY,b.box.min.y);}c.divideScalar(L.length);
+  const inf=WLINE_INFO[key],dir=inf.alongX?V(0,0,Math.sign(c.z-from.z)||1):V(Math.sign(c.x-from.x)||1,0,0);
+  const pivot=V(c.x,Math.max(0,minY),c.z).addScaledVector(dir,inf.t/2),axis=V(0,1,0).cross(dir).normalize();
+  let top=0;for(const b of L){top=Math.max(top,b.box.max.y);gridRemove(b);for(const bd of b.bonds)bd.ok=false;pending.delete(b);b.state='topple';b.rel=b.pos.clone().sub(pivot);b.q0=b.quat.clone();}
+  topples.push({L,pivot,axis,th:.03,w:rnd(.3,.7),H:Math.max(1,top-pivot.y),t:0,dir});supportDirty=true;
+}
+const _tq=new THREE.Quaternion();
+function updateTopples(dt){
+  for(let i=topples.length-1;i>=0;i--){const T=topples[i];T.t+=dt;
+    T.w+=dt*(1.5*GRAV/T.H)*Math.sin(T.th+.05);T.th=Math.min(Math.PI/2,T.th+T.w*dt);_tq.setFromAxisAngle(T.axis,T.th);
+    for(const b of T.L){if(!b.alive)continue;b.pos.copy(b.rel).applyQuaternion(_tq).add(T.pivot);b.quat.copy(_tq).multiply(b.q0);updateFrame(b);
+      if(!b.solo){b.im.setMatrixAt(b.idx,_mx.compose(b.pos,b.quat,b.scale));dirtyIM.add(b.im);}}
+    if(T.th>=Math.PI/2-.12||T.t>4){                                            // slams down: a dust cloud swallows it and it is gone
+      const len=T.L.length,far=T.pivot.clone().addScaledVector(T.dir,T.H*.5);
+      for(let k=0;k<Math.min(10,2+len/25);k++){const b=T.L[(Math.random()*len)|0];
+        spawnSprite({type:'smoke',pos:b.pos.clone().setY(.6),vel:V(rnd(-1,1),rnd(.3,1),rnd(-1,1)),life:rnd(4,7),s0:2.5,s1:rnd(6,9),op:.8,drag:.8,lift:.15,c0:new THREE.Color(.62,.6,.56),c1:new THREE.Color(.7,.68,.64),fadeIn:.08});}
+      sfx.thud(far,1);
+      for(const b of T.L)if(b.alive){b.state='static';b.cells.length=0;hideBlock(b);}
+      for(const im of dirtyIM)im.instanceMatrix.needsUpdate=true;
+      topples.splice(i,1);}
+  }
+  for(const im of dirtyIM)im.instanceMatrix.needsUpdate=true;dirtyIM.clear();
+  for(const b of dustQ){b.dustT-=dt;if(b.dustT<=0){dustQ.delete(b);if(!b.alive)continue;if(Math.random()<.15)cbCrumble(b);else hideBlock(b);}}
+  // anything still waiting for a physics slot does not hang in the air: it crumbles behind a puff of dust
+  for(const b of pending){b.pendT=(b.pendT||0)+dt;if(b.pendT>.8){pending.delete(b);if(Math.random()<.2)cbCrumble(b);else hideBlock(b);}}
+}
 let plT=0;
 function updatePlaster(){
   if(++plT%5===0) for(const f of plasterFaces){
@@ -497,6 +528,7 @@ function wall({x0,z0,x1,z1,y0,h,t,mat,L=1.2,bh=.5,open=[],top=null,ph=0}){
   if(mat==='cblock') L=1.6;                                                   // larger concrete units: 25% fewer bodies and bonds
   const alongX=x1!==x0, len=alongX?x1-x0:z1-z0;
   CUR_WALL=mat==='cblock'?plasterWall(alongX,x0,z0,len,y0,h,t):null;
+  const wStart=blocks.length,wKey=(alongX?'z':'x')+(alongX?z0:x0).toFixed(2)+'|'+Math.round(alongX?x0+len/2:z0+len/2)+'|'+(alongX?1:0);
   const rows=Math.max(1,Math.round(h/bh)), rh=h/rows;
   const snap=y=>y0+Math.round((y-y0)/rh)*rh;
   const ops=open.map(o=>({a:o.a,b:o.b,y0:snap(o.y0),y1:snap(o.y1)}));
@@ -525,6 +557,8 @@ function wall({x0,z0,x1,z1,y0,h,t,mat,L=1.2,bh=.5,open=[],top=null,ph=0}){
       }
     }
   }
+  for(let k=wStart;k<blocks.length;k++){blocks[k].wline=wKey;(WLINES[wKey]??=[]).push(blocks[k]);}
+  WLINE_INFO[wKey]={alongX,t};
 }
 const staticColliders=[];
 
@@ -900,7 +934,7 @@ function activate(b){
   b.state='active'; active.push(b); b.startPos.copy(b.pos); b.wokeAbove=false; b.sleepT=0; b.life=0; b.vs=b.ws=1; supportDirty=true;
 }
 function wake(b,hard=false){
-  if(!b.alive) return false; if(b.state==='active') return true;
+  if(!b.alive||b.state==='topple') return false; if(b.state==='active') return true;
   if(active.length<MAXA||(hard&&active.length<HARDA)){activate(b);return true;}
   pending.add(b); return false;
 }
@@ -1201,7 +1235,7 @@ function bonded(a,b){for(const bd of a.bonds) if(bd.ok&&(bd.a===b||bd.b===b)) re
 function supportCheck(){
   const N=blocks.length; if(_cost.length<N) for(let i=_cost.length;i<N;i++)_cost.push(0);
   for(let i=0;i<N;i++)_cost[i]=9999;
-  const settled=b=>b.alive&&!b.parent&&(b.state!=='active'||(b.wasTouch&&b.v.lengthSq()<.15&&b.w.lengthSq()<.5&&b.life>.25));
+  const settled=b=>b.alive&&!b.parent&&b.state!=='topple'&&(b.state!=='active'||(b.wasTouch&&b.v.lengthSq()<.15&&b.w.lengthSq()<.5&&b.life>.25));
   const buckets=[[]];
   for(const b of blocks) if(settled(b)&&b.box.min.y<.08){_cost[b.id]=0;buckets[0].push(b);}
   for(let c=0;c<buckets.length;c++){const q=buckets[c];if(!q)continue;
@@ -1306,7 +1340,7 @@ function physics(dt){
   }
   supportT-=dt; if(supportDirty&&supportT<=0){supportT=active.length>60?.3:.15;supportDirty=false;supportCheck();}
   physAcc+=dt; let n=0;
-  const maxN=active.length>80?1:2;
+  const maxN=active.length>80?2:3;                                            // never fall below real time: too few steps made debris hang in the air
   while(physAcc>=1/60&&n<maxN){step(1/60);physAcc-=1/60;n++;}
   if(n===maxN) physAcc=0;
   for(const im of dirtyIM) im.instanceMatrix.needsUpdate=true; dirtyIM.clear();
@@ -1675,9 +1709,15 @@ function explode(pos,R){
   // inside the fireball the closest blocks are vaporised outright (hidden under the flash) instead of simulated
   let vap=0;for(const o of list){if(o.dd>R*1.1||vap>=400)break;hideBlock(o.b);vap++;}   // everything inside the blast is erased in place: nothing left to simulate or draw
   for(const {b,dd} of list){ if(!b.alive)continue; if(dd<R*1.2) for(const bd of b.bonds) bd.ok=false; else if(dd<R*1.6) for(const bd of b.bonds) if(Math.random()<.4) bd.ok=false; else bd.str*=.6; }
+  // whole wall runs hit by the shock wave fall over in one piece, away from the blast
+  {const keys=new Set();for(const b of nearby(pos.x-R*2.6,pos.z-R*2.6,pos.x+R*2.6,pos.z+R*2.6))if(b.wline&&b.box.distanceToPoint(pos)<R*2.6)keys.add(b.wline);
+   for(const k of keys)startTopple(k,pos);
+   // floors, beams and roof pieces over the blast lose their walls: they drop out of sight behind the dust, a few at a time
+   for(const b of nearby(pos.x-R*2.6,pos.z-R*2.6,pos.x+R*2.6,pos.z+R*2.6))
+     if(b.alive&&!b.wline&&b.state!=='topple'&&b.box.min.y>.4&&b.box.distanceToPoint(pos)<R*2.6&&b.mat!=='leaf'&&b.mat!=='bark'){b.dustT=rnd(.25,1.4);dustQ.add(b);}}
   supportDirty=true;
   for(const {b,dd} of list){
-    if(!b.alive) continue;
+    if(!b.alive||b.state==='topple') continue;
     if(dd>R*1.7) continue;
     tintBlock(b,.35+.65*dd/(R*1.8));
     if(dd<R*.32*rnd(.7,1.3)||(b.mat==='leaf'&&dd<R*.8)||((b.geom[0]==='q'||b.stair)&&dd<R*rnd(.8,1.05))){shatter(b,pos);continue;}
@@ -3253,7 +3293,7 @@ function tick(){
   camera.updateMatrixWorld();
   _sd.subVectors(sun.position,sun.target.position).normalize().transformDirection(camera.matrixWorldInverse);
   sunAng=Math.atan2(_sd.y,_sd.x);
-  updateSprites(dt); updateSparks(dt); updateChips(dt); updateFires(dt); updateShocks(dt); updateDecals(dt); updateSolos(); updatePlaster(); updateProps(dt);
+  updateSprites(dt); updateSparks(dt); updateChips(dt); updateFires(dt); updateShocks(dt); updateDecals(dt); updateTopples(dt); updateSolos(); updatePlaster(); updateProps(dt);
   for(const t of tracers){t.life-=dt;t.l.visible=t.life>0;t.l.material.opacity=Math.max(0,t.life/.06);}
   flashI*=Math.exp(-dt*9); flashLight.intensity=flashI<1?0:flashI;
   if(fires.length){const c=V();for(const f of fires)c.add(f.pos);c.divideScalar(fires.length);fireLight.position.copy(c).y+=1.5;

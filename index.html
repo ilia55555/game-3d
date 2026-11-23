@@ -118,6 +118,8 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // ---------- settings (saved) + languages ----------
 const SET={lang:'fa',quality:2,sens:1,vol:.8,fov:72,mode:'day',dev:false};
 try{Object.assign(SET,JSON.parse(localStorage.getItem('ag_settings')||'{}'));}catch(e){}
@@ -208,6 +210,9 @@ const texPlank=canvasTex(128,(c,s)=>{c.fillStyle='#7a5636';c.fillRect(0,0,s,s);
   c.strokeStyle='rgba(0,0,0,.5)';c.lineWidth=3;c.strokeRect(0,0,s,s);});
 M.sblock=new THREE.MeshStandardMaterial({map:blockTex(128,120,106),roughness:.92});
 M.cblock=new THREE.MeshStandardMaterial({map:blockTex(140,136,128),roughness:.95});
+// seamless hollow concrete block material (no block outline: the 4 quarters of a block must read as one piece)
+M.cbq=new THREE.MeshStandardMaterial({map:canvasTex(128,(c,s)=>{c.fillStyle='rgb(140,136,128)';c.fillRect(0,0,s,s);
+  for(let i=0;i<2600;i++){const v=rnd(-.12,.12);c.fillStyle=v>0?`rgba(255,255,255,${v})`:`rgba(0,0,0,${-v})`;c.fillRect(rnd(0,s),rnd(0,s),rnd(1,2.5),rnd(1,2.5));}}),roughness:.95});
 M.plank=new THREE.MeshStandardMaterial({map:texPlank,roughness:.8});
 
 await loadStep('ساخت آسمان، نور و جلوه‌های تصویری',10);
@@ -309,7 +314,15 @@ const rdir=()=>V(rnd(-1,1),rnd(-1,1),rnd(-1,1)).normalize();
 //   active : simulated
 //   sleep  : came to rest; immovable again until something disturbs it
 // =====================================================================
-const G={cube:new THREE.BoxGeometry(1,1,1),cyl:new THREE.CylinderGeometry(.5,.5,1,12),cone8:new THREE.ConeGeometry(.5,1,8),cone4:new THREE.ConeGeometry(.5,1,4),ico:new THREE.IcosahedronGeometry(.5,0),torus:(()=>{const g=new THREE.TorusGeometry(.5,.04,6,28);g.rotateX(Math.PI/2);return g;})()};
+// one quarter of a hollow concrete block (face shell + half end web + half centre web), unit box space
+const CB_FF=.035/.2, CB_FW=.035/.6;
+function cbqGeometry(ix,iz,fine){
+  const ff=CB_FF,fw=CB_FW,sg=v=>fine?Math.max(1,Math.round(v*14)):1;
+  const bx=[[1.02,ff,-ix*.01,iz*(.5-ff/2)],[fw,1-ff,ix*(.5-fw/2),-iz*ff/2],[fw/2,1-ff,-ix*(.5-fw/4),-iz*ff/2]];
+  const gs=bx.map(([w,d,x,z])=>{const g=new THREE.BoxGeometry(w,1,d,sg(w),sg(1),sg(d));g.translate(x,0,z);return g;});
+  const m=mergeGeometries(gs);gs.forEach(g=>g.dispose());return m;
+}
+const G={q11:cbqGeometry(1,1),q10:cbqGeometry(1,-1),q01:cbqGeometry(-1,1),q00:cbqGeometry(-1,-1),cube:new THREE.BoxGeometry(1,1,1),cyl:new THREE.CylinderGeometry(.5,.5,1,12),cone8:new THREE.ConeGeometry(.5,1,8),cone4:new THREE.ConeGeometry(.5,1,4),ico:new THREE.IcosahedronGeometry(.5,0),torus:(()=>{const g=new THREE.TorusGeometry(.5,.04,6,28);g.rotateX(Math.PI/2);return g;})()};
 const DENS={sblock:2.4,cblock:2.1,stone:2.4,plank:.6,wood:.6,roof:.6,rust:3,bark:.8,leaf:.25,dark:3,concrete:2.2};
 const HP={sblock:130,cblock:100,stone:130,plank:40,wood:50,roof:40,rust:70,bark:60,leaf:15,dark:20,concrete:90};
 const blocks=[];
@@ -319,7 +332,7 @@ for(const a of [-1,1])for(const b of [-1,1]){SIGNS.push([0,a,b]);SIGNS.push([a,0
 let groupN=0;
 function addBlock(geom,mat,sx,sy,sz,x,y,z,rot=null,col=true,opt={}){
   const quat=new THREE.Quaternion(); if(rot) quat.setFromEuler(new THREE.Euler(rot[0],rot[1],rot[2]));
-  const hf=geom==='cube'?[.5,.5,.5]:geom==='cyl'?[.45,.5,.45]:geom==='torus'?[.5,.05,.5]:[.34,.4,.34];
+  const hf=(geom==='cube'||geom[0]==='q')?[.5,.5,.5]:geom==='cyl'?[.45,.5,.45]:geom==='torus'?[.5,.05,.5]:[.34,.4,.34];
   const h=V(sx*hf[0],sy*hf[1],sz*hf[2]);
   const mass=8*h.x*h.y*h.z*(DENS[mat]||1);
   const pts=[];
@@ -332,7 +345,7 @@ function addBlock(geom,mat,sx,sy,sz,x,y,z,rot=null,col=true,opt={}){
     pts:new Float32Array(pts),ax:[V(),V(),V()],box:new THREE.Box3(),col,hp:HP[mat]||60,alive:true,
     color:new THREE.Color().setScalar(rnd(.8,1.05)),im:null,idx:0,stamp:0,cells:[],
     state:'static',v:V(),w:V(),sleepT:0,life:0,startPos:V(),wokeAbove:false,burn:0,emit:0,
-    orig:V(x,y,z),bonds:[],frag:false,parent:opt.parent||null,kids:null,lp:null,lq:null,group:opt.group||0,noSelf:!!opt.noSelf,hang:!!opt.hang};
+    orig:V(x,y,z),cb:opt.cb||0,solo:null,bonds:[],frag:false,parent:opt.parent||null,kids:null,lp:null,lq:null,group:opt.group||0,noSelf:!!opt.noSelf,hang:!!opt.hang};
   updateFrame(b); blocks.push(b);
   if(b.parent){const P=b.parent;(P.kids??=[]).push(b);const iq=P.quat.clone().invert();b.lp=b.pos.clone().sub(P.pos).applyQuaternion(iq);b.lq=iq.multiply(b.quat);b.state='attached';}
   return b;
@@ -354,6 +367,18 @@ function box(w,h,d,x,y,z,mat,{col=true,ry=0,rot=null,group=0,noSelf=false,hang=f
   const cw=w/nx,ch=h/ny,cd=d/nz;
   for(let i=0;i<nx;i++)for(let j=0;j<ny;j++)for(let k=0;k<nz;k++)
     addBlock('cube',mat,cw,ch,cd,x-w/2+(i+.5)*cw,y-h/2+(j+.5)*ch,z-d/2+(k+.5)*cd,null,col,opt);
+}
+// hollow concrete block = 4 bonded quarters (front/back × left/right); each crumbles away on its own
+let cbN=0;
+function addCBlock(alongX,len,hh,t,x,y,z){
+  const id=++cbN,rot=alongX?null:[0,Math.PI/2,0];
+  const q=new THREE.Quaternion();if(rot)q.setFromEuler(new THREE.Euler(...rot));
+  const tint=rnd(.85,1.03);
+  for(const ix of [-1,1])for(const iz of [-1,1]){
+    const o=V(ix*len/4,0,iz*t/4).applyQuaternion(q);
+    const b=addBlock('q'+(ix>0?1:0)+(iz>0?1:0),'cblock',len/2,hh,t/2,x+o.x,y,z+o.z,rot,true,{cb:id});
+    b.color.setScalar(tint); b.hp=HP.cblock*.8; b.cbix=ix; b.cbiz=iz;
+  }
 }
 // running-bond masonry wall along +x or +z, with openings and optional broken top
 function wall({x0,z0,x1,z1,y0,h,t,mat,L=1.2,bh=.5,open=[],top=null,ph=0}){
@@ -380,6 +405,7 @@ function wall({x0,z0,x1,z1,y0,h,t,mat,L=1.2,bh=.5,open=[],top=null,ph=0}){
       for(const [a,b] of segs){
         if(b-a<.15) continue;
         const m=(a+b)/2; if(top&&yb+rh>top(m)+1e-6) continue;
+        if(mat==='cblock'){addCBlock(alongX,b-a-.004,rh-.003,t,alongX?x0+m:x0,yb+rh/2,alongX?z0:z0+m);continue;}
         if(alongX) addBlock('cube',mat,b-a-.004,rh-.003,t,x0+m,yb+rh/2,z0);
         else addBlock('cube',mat,t,rh-.003,b-a-.004,x0,yb+rh/2,z0+m);
       }
@@ -691,7 +717,7 @@ const dirtyIM=new Set();
   for(const b of blocks)(byKey[b.geom+'|'+b.mat]??=[]).push(b);
   for(const key in byKey){
     const list=byKey[key],[g,m]=key.split('|');
-    const im=new THREE.InstancedMesh(G[g],M[m],list.length);
+    const im=new THREE.InstancedMesh(G[g],M[g[0]==='q'?'cbq':m],list.length);
     im.castShadow=im.receiveShadow=true; im.frustumCulled=false;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     list.forEach((b,i)=>{b.im=im;b.idx=i;im.setMatrixAt(i,_mx.compose(b.pos,b.quat,b.scale));im.setColorAt(i,b.color);});
@@ -949,7 +975,8 @@ function makeBond(a,b){
   const pts=[c.clone().add(u).add(v),c.clone().sub(u).add(v),c.clone().sub(v)];
   const area=4*Math.max(.02,ax[0][1]-e)*Math.max(.02,ax[1][1]-e);
   const same=a.group&&a.group===b.group, str=(same?Math.max:Math.min)(BOND_STR[a.mat]??50,BOND_STR[b.mat]??50)*(same?1:Math.max(.35,Math.min(2.5,area/.25)));
-  const bd={a,b,la:[],lb:[],str,ok:true,st:0,n:pts.length,rA:pts.map(()=>V()),rB:pts.map(()=>V()),err:pts.map(()=>V()),acc:pts.map(()=>V()),k:pts.map(()=>[0,0,0]),dyn:false,A:null,B:null};
+  const str2=(a.cb&&a.cb===b.cb)?str*6:str;
+  const bd={a,b,la:[],lb:[],str:str2,ok:true,st:0,n:pts.length,rA:pts.map(()=>V()),rB:pts.map(()=>V()),err:pts.map(()=>V()),acc:pts.map(()=>V()),k:pts.map(()=>[0,0,0]),dyn:false,A:null,B:null};
   _iqa.copy(a.quat).invert(); for(const p of pts) bd.la.push(p.clone().sub(a.pos).applyQuaternion(_iqa));
   _iqa.copy(b.quat).invert(); for(const p of pts) bd.lb.push(p.clone().sub(b.pos).applyQuaternion(_iqa));
   a.bonds.push(bd); b.bonds.push(bd); return bd;
@@ -1402,6 +1429,7 @@ function detonate(c){const i=c4s.indexOf(c);if(i<0)return;c4s.splice(i,1);scene.
 function detonateAll(){if(!c4s.length)return;sfx.beep();[...c4s].forEach((c,i)=>timers.push({t:.25+i*.18,fn:()=>detonate(c)}));}
 let fragBudget=0;
 function shatter(b,pos){
+  if(b.geom[0]==='q'){cbCrumble(b);return;}
   hideBlock(b);
   if(fragBudget>0&&fragPools[b.mat]&&b.geom==='cube'){fragBudget-=fracture(b,pos,rnd(10,20)).length;
     for(let k=0;k<2;k++)spawnChip(b.mat,rnd(.05,.14),b.pos.clone().add(rdir().multiplyScalar(.2)),rdir().multiplyScalar(rnd(8,18)).add(V(0,4,0)));return;}
@@ -2623,6 +2651,13 @@ function traceBullet(o,d,w,dmg,muzzleW,showTracer){
       pos=h.p.clone().addScaledVector(n,.02); left=Math.min(left,30); dmg*=.5; bounces++; continue;
     }
     if(m==='bark'){barkHit(h,w);break;}
+    if(b.geom[0]==='q'&&w.snd==='sniper'&&pens<4){                              // sniper round punches through the hollow block
+      cbHit(h,w,dir);
+      const ex=rayOBB(h.p.clone().addScaledVector(dir,6),dir.clone().negate(),b,6);
+      const exit=ex?h.p.clone().addScaledVector(dir,6-ex.t):h.p.clone().addScaledVector(dir,.1);
+      ignore.add(b); pos=exit.addScaledVector(dir,.01); dmg*=.8; pens++; continue;
+    }
+    if(b.geom[0]==='q'){cbHit(h,w,dir);break;}
     masonryHit(h,w,dir);break;
   }
   if(showTracer) for(let i=0;i<pts.length-1;i++) tracer(pts[i],pts[i+1]);
@@ -2646,6 +2681,92 @@ function masonryHit(h,w,dir){
     hideBlock(b); fracture(b,h.p.clone().addScaledVector(dir,-.5),rnd(1,3),3);
     spawnSprite({type:'smoke',pos:b.pos.clone(),vel:V(0,.5,0),life:2.2,s0:.8,s1:2.4,op:.6,c0:new THREE.Color(...dc),c1:new THREE.Color(...dc),fadeIn:.05});
   }
+}
+// ---------- hollow concrete blocks: plastic dents, craters that follow the dent, quarters crumble to dust ----------
+function makeCraterMat(){
+  const N=128,h=new Float32Array(N*N),sp=[...Array(14)].map(()=>({a:rnd(0,6.283),r:rnd(.55,.95)}));
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){const dx=(x-N/2)/(N/2),dy=(y-N/2)/(N/2),d=Math.hypot(dx,dy),a=Math.atan2(dy,dx);
+    let e=.55;for(const q of sp){const da=Math.abs(((a-q.a+Math.PI*3)%(Math.PI*2))-Math.PI);e=Math.max(e,q.r*(1-da*2.2));}e+=rnd(-.025,.025);
+    h[y*N+x]=d<.16?-1:d<e?-.55*Math.pow(1-(d-.16)/(e-.16),1.4)-.1:0;}
+  const c=document.createElement('canvas');c.width=c.height=N;const g=c.getContext('2d'),col=g.createImageData(N,N),nr=g.createImageData(N,N);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){const i=y*N+x,v=h[i],o=i*4,n=rnd(-15,15);let r=0,al=0;
+    if(v<=-.99){r=35+n*.5;al=255;}else if(v<0){r=185+v*90+n;al=255;}
+    col.data[o]=r;col.data[o+1]=r*.98;col.data[o+2]=r*.93;col.data[o+3]=al;
+    const nx=(h[y*N+Math.max(x-1,0)]-h[y*N+Math.min(x+1,N-1)])*6,ny=(h[Math.min(y+1,N-1)*N+x]-h[Math.max(y-1,0)*N+x])*6,l=Math.hypot(nx,ny,1);
+    nr.data[o]=(nx/l*.5+.5)*255;nr.data[o+1]=(ny/l*.5+.5)*255;nr.data[o+2]=(1/l*.5+.5)*255;nr.data[o+3]=255;}
+  g.putImageData(col,0,0);const map=new THREE.CanvasTexture(c);map.colorSpace=THREE.SRGBColorSpace;
+  const c2=document.createElement('canvas');c2.width=c2.height=N;c2.getContext('2d').putImageData(nr,0,0);
+  return new THREE.MeshStandardMaterial({map,normalMap:new THREE.CanvasTexture(c2),normalScale:new THREE.Vector2(2.5,2.5),roughness:1,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+}
+const CRATER_M=[makeCraterMat(),makeCraterMat(),makeCraterMat()];
+const CB_CRATER={pistol:.08,smg:.08,ar:.1,shotgun:.05,dmr:.12,sniper:.15,lmg:.11};
+const solos=[],cbDecals=[];
+// first hit turns the instanced quarter into its own finely tessellated mesh so it can deform
+function cbSolo(b){
+  if(b.solo) return b.solo;
+  const m=new THREE.Mesh(cbqGeometry(b.cbix,b.cbiz,true),M.cbq.clone());m.material.color.copy(b.color);
+  m.castShadow=m.receiveShadow=true;m.position.copy(b.pos);m.quaternion.copy(b.quat);m.scale.copy(b.scale);scene.add(m);
+  b.solo={m,decals:[]};solos.push(b);b.im.setMatrixAt(b.idx,ZERO);b.im.instanceMatrix.needsUpdate=true;return b.solo;
+}
+const _cl=V(),_cd=V(),_cv=V(),_cq=new THREE.Quaternion();
+function cbDent(b,P,dir,R,depth){
+  const so=cbSolo(b),m=so.m;m.updateMatrixWorld();
+  m.worldToLocal(_cl.copy(P));_cq.copy(m.quaternion).invert();_cd.copy(dir).applyQuaternion(_cq);
+  const s=m.scale;
+  const deform=geo=>{const pa=geo.attributes.position;
+    for(let i=0;i<pa.count;i++){_cv.fromBufferAttribute(pa,i);
+      const d=Math.hypot((_cv.x-_cl.x)*s.x,(_cv.y-_cl.y)*s.y,(_cv.z-_cl.z)*s.z);if(d>=R)continue;
+      const k=1-(d/R)*(d/R),f=depth*k*k;pa.setXYZ(i,_cv.x+_cd.x*f/s.x,_cv.y+_cd.y*f/s.y,_cv.z+_cd.z*f/s.z);}
+    pa.needsUpdate=true;};
+  deform(m.geometry);m.geometry.computeVertexNormals();m.geometry.computeBoundingSphere();
+  for(const d of so.decals)deform(d.geometry);
+}
+const _ch=new THREE.Object3D();
+function cbCrater(b,P,n,size){
+  const so=cbSolo(b),m=so.m;m.updateMatrixWorld();
+  _ch.position.copy(P);_ch.lookAt(P.clone().add(n));_ch.rotateZ(rnd(0,6.283));
+  const g=new DecalGeometry(m,P,_ch.rotation,V(size,size,.1));
+  if(!g.attributes.position.count){g.dispose();return;}
+  g.applyMatrix4(m.matrixWorld.clone().invert());
+  const d=new THREE.Mesh(g,CRATER_M[(Math.random()*3)|0]);d.receiveShadow=true;m.add(d);so.decals.push(d);cbDecals.push(d);
+  if(cbDecals.length>220){const o=cbDecals.shift();o.parent&&o.parent.remove(o);o.geometry.dispose();}
+}
+function obbDist(b,p){
+  const d=_cv.copy(p).sub(b.pos);let s=0;
+  for(let a=0;a<3;a++){const e=Math.max(0,Math.abs(d.dot(b.ax[a]))-[b.h.x,b.h.y,b.h.z][a]);s+=e*e;}
+  return Math.sqrt(s);
+}
+function cbCrumble(b){
+  if(!b.alive)return;
+  const c=b.pos.clone(),dc=DUST.cblock;
+  hideBlock(b);
+  spawnSprite({type:'smoke',pos:c,vel:V(0,-.3,0),life:1.1,s0:.3,s1:1.1,op:.55,drag:2,c0:new THREE.Color(...dc),c1:new THREE.Color(...dc),fadeIn:.03});
+  for(let i=0;i<4;i++)spawnChip('cblock',rnd(.02,.045),c.clone().add(V(rnd(-.2,.2),rnd(-.2,.2),rnd(-.08,.08))),V(rnd(-.6,.6),rnd(-.5,.3),rnd(-.6,.6)));
+}
+function updateSolos(){
+  for(let i=solos.length-1;i>=0;i--){const b=solos[i],m=b.solo.m;
+    if(!b.alive){scene.remove(m);m.geometry.dispose();for(const d of b.solo.decals){d.geometry.dispose();const k=cbDecals.indexOf(d);if(k>=0)cbDecals.splice(k,1);}b.solo=null;solos.splice(i,1);continue;}
+    m.position.copy(b.pos);m.quaternion.copy(b.quat);b.im.setMatrixAt(b.idx,ZERO);b.im.instanceMatrix.needsUpdate=true;}
+}
+function cbHit(h,w,dir){
+  const b=h.b,p=h.p.clone().addScaledVector(h.n,.02),cal=CAL[w.snd]||.06,dc=DUST.cblock;
+  sfx.impact('cblock',p);
+  for(let i=0;i<(cal>.08?6:3);i++)spark(p,h.n.clone().multiplyScalar(rnd(2,5)).add(rdir().multiplyScalar(2)),rnd(.1,.25));
+  spawnSprite({type:'smoke',pos:p,vel:h.n.clone().multiplyScalar(1.2),life:rnd(.6,1.1),s0:.15,s1:cal*12,op:.6,drag:2,c0:new THREE.Color(...dc),c1:new THREE.Color(...dc).multiplyScalar(1.15),fadeIn:.02});
+  spawnChip('cblock',rnd(.02,.04),p,h.n.clone().multiplyScalar(rnd(2,4)).add(rdir().multiplyScalar(1.2)));
+  if(b.state==='active')b.v.addScaledVector(dir,(cal*30)/Math.max(.2,b.mass));
+  const size=(CB_CRATER[w.snd]||.09)*rnd(.85,1.15),dmg=HP.cblock*(BREACH[w.snd]||.1)*1.6;
+  const r=size*.5,dead=[];
+  const near=query(h.p.x-r-.05,h.p.z-r-.05,h.p.x+r+.05,h.p.z+r+.05);if(!near.includes(b))near.push(b);
+  for(const o of near){      // the crater can straddle two blocks: both get hurt
+    if(!o.alive||o.geom[0]!=='q')continue;
+    if(o!==b&&obbDist(o,h.p)>r)continue;
+    cbDent(o,h.p,dir,size*.9,Math.min(.004+cal*.12,.022));
+    cbCrater(o,h.p,h.n,size);
+    o.hp-=o===b?dmg:dmg*.6;
+    if(o.hp<=0)dead.push(o);
+  }
+  for(const o of dead)cbCrumble(o);
 }
 function woodHit(p,n,w,b,dir,exit){
   addDecal(p,n,(CAL[w.snd]||.06)*(exit?1.6:1.2),'woodhole',b,120);
@@ -2953,7 +3074,7 @@ function tick(){
   camera.updateMatrixWorld();
   _sd.subVectors(sun.position,sun.target.position).normalize().transformDirection(camera.matrixWorldInverse);
   sunAng=Math.atan2(_sd.y,_sd.x);
-  updateSprites(dt); updateSparks(dt); updateChips(dt); updateFires(dt); updateShocks(dt); updateDecals(dt); updateProps(dt);
+  updateSprites(dt); updateSparks(dt); updateChips(dt); updateFires(dt); updateShocks(dt); updateDecals(dt); updateSolos(); updateProps(dt);
   for(const t of tracers){t.life-=dt;t.l.visible=t.life>0;t.l.material.opacity=Math.max(0,t.life/.06);}
   flashI*=Math.exp(-dt*9); flashLight.intensity=flashI<1?0:flashI;
   if(fires.length){const c=V();for(const f of fires)c.add(f.pos);c.divideScalar(fires.length);fireLight.position.copy(c).y+=1.5;

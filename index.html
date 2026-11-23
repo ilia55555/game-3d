@@ -419,15 +419,11 @@ function plasterPiece(b){
 // plaster comes off a lost block raggedly: some of it stays stuck to neighbours, some tears off beyond the block
 function plasterTear(f,r){
   const g=f.g,cx=r.x+r.w/2,cy=r.y+r.h/2;
-  g.save();g.globalCompositeOperation='destination-out';
-  // one soft, lumpy patch (no straight edges): a jittered super-ellipse around the lost block + a few torn lobes
-  g.beginPath();const n=36,ph=rnd(0,6);let k0=rnd(.85,1.15);
-  for(let i=0;i<=n;i++){const a=i/n*6.283,c=Math.cos(a),sn=Math.sin(a);
-    const e=Math.pow(Math.pow(Math.abs(c),4)+Math.pow(Math.abs(sn),4),-.25);       // squircle radius
-    k0=k0*.6+rnd(.78,1.22)*.4+Math.sin(a*3+ph)*.04;
-    const x=cx+c*e*r.w/2*k0,y=cy+sn*e*r.h/2*k0;i?g.lineTo(x,y):g.moveTo(x,y);}
-  g.closePath();g.fill();
-  for(let i=0;i<5;i++){const a=rnd(0,6.283);blobPath(g,cx+Math.cos(a)*r.w*.45,cy+Math.sin(a)*r.h*.45,Math.min(r.w,r.h)*rnd(.15,.35),.45);g.fill();}
+  g.clearRect(r.x-1,r.y-1,r.w+2,r.h+2);                                       // nothing may stay over a lost block
+  g.save();g.globalCompositeOperation='destination-out';                       // ragged, lumpy tear beyond its outline
+  const st=4;
+  for(let x=r.x;x<=r.x+r.w;x+=st)for(const y of [r.y,r.y+r.h]){blobPath(g,x+rnd(-2,2),y,rnd(1,1)*PPM*(Math.random()<.25?rnd(.08,.2):rnd(.02,.07)),.5);g.fill();}
+  for(let y=r.y;y<=r.y+r.h;y+=st)for(const x of [r.x,r.x+r.w]){blobPath(g,x,y+rnd(-2,2),PPM*(Math.random()<.25?rnd(.08,.2):rnd(.02,.07)),.5);g.fill();}
   g.restore();
   g.save();g.globalCompositeOperation='source-atop';                          // paint peels back around the torn edge
   for(let i=0;i<14;i++){const ang=rnd(0,6.283);paintOff(g,cx+Math.cos(ang)*r.w*rnd(.5,.62),cy+Math.sin(ang)*r.h*rnd(.5,.62),PPM*rnd(.06,.16));}
@@ -1659,7 +1655,7 @@ function explode(pos,R){
       if(b.state==='active'){const dir=b.pos.clone().sub(pos).normalize();b.v.addScaledVector(dir,(1-(dd-R*1.8)/(R*1.6))*2);}
       continue;}
     tintBlock(b,.35+.65*dd/(R*1.8));
-    if(dd<R*.32*rnd(.7,1.3)||(b.mat==='leaf'&&dd<R*.8)){shatter(b,pos);continue;}
+    if(dd<R*.32*rnd(.7,1.3)||(b.mat==='leaf'&&dd<R*.8)||((b.geom[0]==='q'||b.stair)&&dd<R*rnd(.8,1.05))){shatter(b,pos);continue;}
     if(dd<R*1.7){
       if(!wake(b,true)){if(dd<R)shatter(b,pos);continue;}
       const f=Math.pow(1-dd/(R*1.7),1.2);

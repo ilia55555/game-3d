@@ -407,11 +407,11 @@ function plasterPiece(b){
 }
 // plaster comes off a lost block raggedly: some of it stays stuck to neighbours, some tears off beyond the block
 function plasterTear(f,r){
-  const g=f.g;g.save();g.globalCompositeOperation='destination-out';
-  const st=PPM*.12;
-  for(let x=r.x+st/2;x<r.x+r.w;x+=st)for(let y=r.y+st/2;y<r.y+r.h;y+=st){
-    const edge=Math.min(x-r.x,r.x+r.w-x,y-r.y,r.y+r.h-y)<st*1.5;
-    blobPath(g,x+rnd(-st,st)*.4,y+rnd(-st,st)*.4,st*(edge?rnd(.35,1.7):1.1),.45);g.fill();}
+  const g=f.g;g.clearRect(r.x-1,r.y-1,r.w+2,r.h+2);                           // everything over the lost block goes
+  g.save();g.globalCompositeOperation='destination-out';
+  const st=PPM*.14;                                                            // ragged edge: tears a bit further here and there
+  for(let x=r.x;x<=r.x+r.w;x+=st)for(const y of [r.y,r.y+r.h])if(Math.random()<.6){blobPath(g,x+rnd(-3,3),y,st*rnd(.4,1.5),.5);g.fill();}
+  for(let y=r.y;y<=r.y+r.h;y+=st)for(const x of [r.x,r.x+r.w])if(Math.random()<.6){blobPath(g,x,y+rnd(-3,3),st*rnd(.4,1.5),.5);g.fill();}
   g.restore();
   g.save();g.globalCompositeOperation='source-atop';                          // paint peels back around the torn edge
   const st2=PPM*.15;
@@ -444,7 +444,7 @@ let plT=0;
 function updatePlaster(){
   if(++plT%5===0) for(const f of plasterFaces){
     for(let i=f.pieces.length-1;i>=0;i--){const q=f.pieces[i];
-      if(!q.b.alive||q.b.state==='active'||q.b.solo&&q.b.pos.distanceToSquared(q.b.orig)>.0004){plasterTear(f,q.r);f.pieces.splice(i,1);
+      if(!q.b.alive||q.b.state!=='static'||q.b.pos.distanceToSquared(q.b.orig)>.0004){plasterTear(f,q.r);f.pieces.splice(i,1);
         const c=q.b.pos;spawnSprite({type:'smoke',pos:c.clone().addScaledVector(f.n,.25),vel:V(0,-.2,0),life:1.2,s0:.3,s1:1,op:.45,drag:2,c0:new THREE.Color(.92,.91,.89),c1:new THREE.Color(.97,.97,.96),fadeIn:.03});}}
   }
   for(const f of plasterFaces) if(f.dirty){f.tex.needsUpdate=true;f.dirty=false;}

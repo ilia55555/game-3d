@@ -291,7 +291,8 @@ const PR_MAX=Math.min(devicePixelRatio,1.5);let pr=PR_MAX,frAcc=0,frN=0,frLast=p
 function setPR(v){pr=v;renderer.setPixelRatio(v);composer.setPixelRatio(v);composer.setSize(innerWidth,innerHeight);}
 function adaptRes(){const n=performance.now(),d=n-frLast;frLast=n;if(d>250)return;frAcc+=d;frN++;if(frN<40)return;const avg=frAcc/frN;frAcc=frN=0;
   if(avg>19&&pr>.6)setPR(Math.max(.6,pr-.15));else if(avg<14&&pr<PR_MAX)setPR(Math.min(PR_MAX,pr+.1));}
-function renderFrame(){ adaptRes(); syncVmCam(); if(quality===0){renderer.setRenderTarget(null);renderer.render(scene,camera);drawVM(renderer);} else composer.render(); }
+renderer.shadowMap.autoUpdate=false;let shF=0;
+function renderFrame(){ adaptRes(); syncVmCam(); renderer.shadowMap.needsUpdate=(shF++&1)===0; /* sun shadows redrawn every other frame */ if(quality===0){renderer.setRenderTarget(null);renderer.render(scene,camera);drawVM(renderer);} else composer.render(); }
 addEventListener('resize',()=>{composer.setSize(innerWidth,innerHeight);grade.uniforms.uRes.value.set(innerWidth,innerHeight);});
 
 // night sky: deep gradient dome with procedural stars, and a moon
@@ -843,7 +844,7 @@ function nearby(minx,minz,maxx,maxz){
 for(const b of blocks) gridInsert(b);
 
 // ---------- body state changes ----------
-const MAXA=300,HARDA=440;let supportDirty=false,supportT=0;
+const MAXA=150,HARDA=210;let supportDirty=false,supportT=0;
 function detach(k){const P=k.parent;if(!P)return;k.parent=null;if(P.kids)P.kids.splice(P.kids.indexOf(k),1);k.state='static';if(P.state==='active'){k.cells.length=0;gridInsert(k);}}
 function followParent(P){if(!P.kids)return;for(const k of P.kids){k.pos.copy(k.lp).applyQuaternion(P.quat).add(P.pos);k.quat.copy(P.quat).multiply(k.lq);updateFrame(k);k.im.setMatrixAt(k.idx,_mx.compose(k.pos,k.quat,k.scale));dirtyIM.add(k.im);}}
 function activate(b){
@@ -859,7 +860,8 @@ function wake(b,hard=false){
   pending.add(b); return false;
 }
 function removeActive(b){const i=active.indexOf(b);if(i>=0){active[i]=active[active.length-1];active.pop();}}
-function sleepBody(b){b.state='sleep';b.v.set(0,0,0);b.w.set(0,0,0);removeActive(b);gridInsert(b);if(b.kids)for(const k of b.kids)gridInsert(k);}
+function sleepBody(b){if(b.frag&&b.scale.x*b.scale.y*b.scale.z<.03){hideBlock(b);return;} // small rubble vanishes once it settles
+  b.state='sleep';b.v.set(0,0,0);b.w.set(0,0,0);removeActive(b);gridInsert(b);if(b.kids)for(const k of b.kids)gridInsert(k);}
 // wake whatever rests on (or hangs from) b
 function wakeAbove(b){
   const e=.07,bx=b.box;
@@ -945,7 +947,7 @@ function collide(A,B){
 }
 const skipPair=(A,B)=>A.group&&A.group===B.group&&(A.noSelf||B.noSelf);
 const ovl=(a,b,e)=>a.min.x<=b.max.x+e&&a.max.x>=b.min.x-e&&a.min.y<=b.max.y+e&&a.max.y>=b.min.y-e&&a.min.z<=b.max.z+e&&a.max.z>=b.min.z-e;
-let thudBudget=0;const cache=new Map();
+let thudBudget=0;const cache=new Map(),_sap=[];
 function step(dt){
   nC=0;
   for(const b of active){b.v.y-=GRAV*dt;}
@@ -956,7 +958,11 @@ function step(dt){
       if(!B.alive||!ovl(A.box,B.box,.02)||skipPair(A,B)) continue;
       collide(A,B);
     }
-    for(let j=i+1;j<active.length;j++){const B=active[j];
+  }
+  // active-vs-active: sort-and-sweep on x instead of testing every pair (O(n log n) rather than O(n²))
+  _sap.length=0; for(const b of active)_sap.push(b); _sap.sort((x,y)=>x.box.min.x-y.box.min.x);
+  for(let i=0;i<_sap.length;i++){const A=_sap[i],mx=A.box.max.x+.02;
+    for(let j=i+1;j<_sap.length;j++){const B=_sap[j]; if(B.box.min.x>mx)break;
       if(!ovl(A.box,B.box,.02)||skipPair(A,B)) continue;
       collide(A,B);}
   }
@@ -980,7 +986,7 @@ function step(dt){
     if(vn<-4&&A.mass>.06&&thudBudget>0){thudBudget--;sfx.thud(c.p,Math.min(1,-vn/14)*Math.min(1,A.mass));}
   }
   prepBonds(dt);
-  const iters=active.length>220?7:active.length>120?9:12;
+  const iters=active.length>120?5:active.length>60?7:10;
   for(let it=0;it<iters;it++){ solveBonds(dt); for(let i=0;i<nC;i++){
     const c=cPool[i];
     relVel(c,_a);
@@ -1252,10 +1258,11 @@ function physics(dt){
     if(active.length>=MAXA){let need=pending.size;for(let i=active.length-1;i>=0&&need>0;i--){const b=active[i];if(b.life>.3&&b.wasTouch&&b.v.lengthSq()<.1&&b.w.lengthSq()<.1&&b.sleepT>.1){sleepBody(b);need--;}}}
     const pl=[...pending].sort((x,y)=>x.box.min.y-y.box.min.y);for(const b of pl){if(active.length>=MAXA)break;activate(b);}
   }
-  supportT-=dt; if(supportDirty&&supportT<=0){supportT=.12;supportDirty=false;supportCheck();}
+  supportT-=dt; if(supportDirty&&supportT<=0){supportT=active.length>60?.3:.15;supportDirty=false;supportCheck();}
   physAcc+=dt; let n=0;
-  while(physAcc>=1/60&&n<2){step(1/60);physAcc-=1/60;n++;}
-  if(n===2) physAcc=0;
+  const maxN=active.length>80?1:2;
+  while(physAcc>=1/60&&n<maxN){step(1/60);physAcc-=1/60;n++;}
+  if(n===maxN) physAcc=0;
   for(const im of dirtyIM) im.instanceMatrix.needsUpdate=true; dirtyIM.clear();
 }
 

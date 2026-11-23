@@ -119,7 +119,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 // ---------- settings (saved) + languages ----------
-const SET={lang:'fa',quality:2,sens:1,vol:.8,fov:72,mode:'day'};
+const SET={lang:'fa',quality:2,sens:1,vol:.8,fov:72,mode:'day',dev:false};
 try{Object.assign(SET,JSON.parse(localStorage.getItem('ag_settings')||'{}'));}catch(e){}
 function saveSet(){try{localStorage.setItem('ag_settings',JSON.stringify(SET));}catch(e){}}
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(()=>{});
@@ -548,12 +548,12 @@ const LADDERS=[];
   for(let y=2.6;y<top;y+=1){kid('torus',.9,.9,.9,x,y,cz);
     if(y+1<top) for(const a of [.6,1.57,2.54]) kid('cube',.03,1,.03,x+Math.cos(a)*.45,y+.5,cz+Math.sin(a)*.45);}
   // landing deck at the foot of the cab: steel grating around a hatch the ladder rises through, with a guard rail
-  const dz0=z+L/2+.2,dz1=z+L/2+1.9,dy=H-.1;
-  for(const s of [-1,1]) box(1.15,.12,dz1-dz0,x+s*1.025,dy,(dz0+dz1)/2,'rust',{group});
+  const dz0=z+L/2+.2,dz1=z+L/2+3.4,dy=H-.1,hw=2.6;
+  for(const s of [-1,1]) box(hw-.45,.12,dz1-dz0,x+s*(.45+hw)/2,dy,(dz0+dz1)/2,'rust',{group});
   box(.9,.12,dz1-(zl+.95),x,dy,(zl+.95+dz1)/2,'rust',{group});
-  for(const s of [-1,1]) box(.06,1.1,dz1-dz0,x+s*1.6,H+.55,(dz0+dz1)/2,'rust',{group});
-  box(3.2,1.1,.06,x,H+.55,dz1,'rust',{group});
-  LADDERS.push({x,zl,nz:-1,y0:0,y1:H+.05,ref:mid,hw:.4,exit:V(x+1.05,H+.01,zl+.6)});
+  for(const s of [-1,1]) box(.06,1.1,dz1-dz0,x+s*(hw-.03),H+.55,(dz0+dz1)/2,'rust',{group});
+  box(2*hw,1.1,.06,x,H+.55,dz1-.03,'rust',{group});
+  LADDERS.push({x,zl,nz:-1,y0:0,y1:H+.05,ref:mid,hw:.4,exit:V(x,H+.01,zl+1.8)});
 })();
 
 // ---------- ruins (south): broken stone-block walls, column drums ----------
@@ -1845,6 +1845,7 @@ function renderMenu(panel){
       `<div class="row"><span>${tr('time')}</span><span class="seg"><button data-act="day" class="${SET.mode==='day'?'on':''}">${tr('day')}</button><button data-act="night" class="${SET.mode==='night'?'on':''}">${tr('night')}</button></span></div>`+
       R('sSens',tr('sens'),.2,3,.05,SET.sens,v=>(+v).toFixed(2))+R('sVol',tr('vol'),0,1,.05,SET.vol,v=>Math.round(v*100)+'%')+R('sFov',tr('fov'),60,95,1,SET.fov,v=>v+'°')+
       `<div class="row"><span>${tr('lang')}</span><span class="seg"><button data-act="fa" class="${fa?'on':''}">فارسی</button><button data-act="en" class="${fa?'':'on'}">English</button></span></div>`+
+      `<div class="row"><span>${fa?'حالت توسعه‌دهنده (جان بی‌نهایت)':'Developer mode (infinite health)'}</span><span class="seg"><button data-act="devon" class="${SET.dev?'on':''}">${fa?'روشن':'On'}</button><button data-act="devoff" class="${SET.dev?'':'on'}">${fa?'خاموش':'Off'}</button></span></div>`+
       `<div class="sub">${tr('saved')}</div>`+B('back',tr('back'));
   } else if(panel==='controls'){
     h+=`<div class="keys">${tr('keys').map(([k,d])=>`<kbd>${k}</kbd><span>${d}</span>`).join('')}</div>`+B('back',tr('back'));
@@ -1865,6 +1866,7 @@ mpanel.addEventListener('click',e=>{
   else if(a==='back') renderMenu('root');
   else if(a==='day'||a==='night'){setMode(a);SET.mode=a;saveSet();renderMenu(mpanel.dataset.panel);}
   else if(a==='fa'||a==='en'){SET.lang=a;saveSet();applyLang();renderMenu(mpanel.dataset.panel);}
+  else if(a==='devon'||a==='devoff'){SET.dev=a==='devon';saveSet();if(SET.dev){player.hp=100;}renderMenu(mpanel.dataset.panel);}
   else if(a[0]==='q'){quality=+a[1];SET.quality=quality;saveSet();applyQuality();renderMenu('settings');}
 });
 function applyLang(){
@@ -2330,14 +2332,32 @@ function explosionDamage(pos,R){
     if(e.dead){for(let i=0;i<NJ;i++)e.jprev[i].addScaledVector(dir,-(1-d/(R*2.2))*.25);e.settle=0;continue;}
     damageEnemy(e,260*(1-d/(R*2.2)),dir,false,'انفجار');}
   const d=player.pos.clone().add(V(0,1,0)).distanceTo(pos);
-  if(d<R*2.2) hurtPlayer(170*(1-d/(R*2.2)));
+  if(d<R*2.2) hurtPlayer(170*(1-d/(R*2.2)),pos);
 }
-function hurtPlayer(dmg){
+function hurtPlayer(dmg,src){
   if(player.dead) return;
+  if(src) addDmgDir(src,dmg);
+  if(SET.dev){player.hurtT=0;vigEl.style.opacity=Math.min(.5,.2+dmg/60);sfx.hurt();return;}
   player.hp-=dmg; player.hurtT=0; vigEl.style.opacity=Math.min(1,.35+dmg/40); punchP+=.02; hurtFx=Math.min(1,hurtFx+dmg/25); sfx.hurt();
   if(player.hp<=0){player.hp=0;player.dead=true;deadEl.style.display='flex';document.exitPointerLock();}
 }
 let hurtFx=0;
+// damage direction indicator: red arcs around the crosshair pointing toward the shooter
+const dmgDirs=[],dmgBox=document.createElement('div');dmgBox.className='ui';dmgBox.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:6';document.body.appendChild(dmgBox);
+function addDmgDir(src,dmg){
+  let d=dmgDirs.find(o=>o.src.distanceToSquared(src)<4);
+  if(!d){const el=document.createElement('div');el.style.cssText='position:absolute;left:50%;top:50%;width:0;height:0';
+    el.innerHTML='<div style="position:absolute;left:-90px;top:-190px;width:180px;height:60px;border-radius:50% 50% 0 0/100% 100% 0 0;border-top:10px solid rgba(255,30,20,.95);filter:drop-shadow(0 0 6px rgba(255,0,0,.9))"></div><div style="position:absolute;left:-10px;top:-215px;width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-bottom:16px solid rgba(255,40,30,.95)"></div>';
+    dmgBox.appendChild(el);d={el,src:src.clone(),t:0};dmgDirs.push(d);}
+  d.src.copy(src);d.t=0;d.k=Math.min(1,.55+dmg/30);
+}
+function updDmgDirs(dt){
+  const fx=-Math.sin(player.yaw),fz=-Math.cos(player.yaw),rx=Math.cos(player.yaw),rz=-Math.sin(player.yaw);
+  for(let i=dmgDirs.length-1;i>=0;i--){const d=dmgDirs[i];d.t+=dt;
+    if(d.t>2.2){d.el.remove();dmgDirs.splice(i,1);continue;}
+    const dx=d.src.x-player.pos.x,dz=d.src.z-player.pos.z,a=Math.atan2(dx*rx+dz*rz,dx*fx+dz*fz);
+    d.el.style.transform=`rotate(${a}rad)`;d.el.style.opacity=d.k*Math.min(1,(2.2-d.t)/.8);}
+}
 function respawn(){
   player.dead=false;player.hp=100;deadEl.style.display='none';player.pos.set(0,0,22);player.vel.set(0,0,0);crouch=false;slideT=0;
   for(const e of enemies) removeEnemy(e); enemies.length=0; wave--; nextWave();
@@ -2359,7 +2379,7 @@ function enemyShoot(e){
   spawnSprite({type:'smoke',pos:mz,vel:fd.multiplyScalar(.8).add(V(0,.3,0)),life:rnd(.8,1.4),s0:.12,s1:.6,op:.25,c0:new THREE.Color(.6,.6,.58),c1:new THREE.Color(.7,.7,.7),fadeIn:.02});
   const L=eLights[eLi++%2];L.position.copy(mz);L.intensity=40;
   spawnChip('brass',.02,e.gun.g.localToWorld(e.gun.eject.clone()),V(e.headRight.x,0,e.headRight.z).multiplyScalar(2.2).add(V(0,2,0)));
-  if(hit) hurtPlayer(e.type==='sniper'?42:rnd(5,8));
+  if(hit) hurtPlayer(e.type==='sniper'?42:rnd(5,8),e.pos);
   else if(tgt.distanceTo(head)<2.2) sfx.whiz(tgt);
 }
 function updateEnemies(dt){
@@ -2797,6 +2817,7 @@ function tick(){
   eyeH+=((slideT>0?.8:crouch?1.0:1.6)-eyeH)*Math.min(1,dt*10);
   // health regen after 4s without damage
   player.hurtT+=dt; if(player.hurtT>4&&!player.dead) player.hp=Math.min(100,player.hp+25*dt);
+  updDmgDirs(dt); if(SET.dev) player.hp=100;
   hpEl.style.width=player.hp+'%'; hpEl.style.background=player.hp<35?'#e33':'#e8e2d0';
   vigEl.style.opacity=Math.max(+vigEl.style.opacity-dt*1.2,player.hp<35?.45:0);
 

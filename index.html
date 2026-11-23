@@ -413,17 +413,27 @@ function plasterTear(f,r){
     const edge=Math.min(x-r.x,r.x+r.w-x,y-r.y,r.y+r.h-y)<st*1.5;
     blobPath(g,x+rnd(-st,st)*.4,y+rnd(-st,st)*.4,st*(edge?rnd(.35,1.7):1.1),.45);g.fill();}
   g.restore();
-  g.save();g.globalCompositeOperation='source-atop';g.strokeStyle='rgba(60,55,50,.35)';g.lineWidth=2;  // torn edge shadow
+  g.save();g.globalCompositeOperation='source-atop';                          // paint peels back around the torn edge
+  const st2=PPM*.15;
+  for(let x=r.x;x<=r.x+r.w;x+=st2)for(const y of [r.y,r.y+r.h])if(Math.random()<.7)paintOff(g,x+rnd(-4,4),y+rnd(-4,4),st2*rnd(.6,1.4));
+  for(let y=r.y;y<=r.y+r.h;y+=st2)for(const x of [r.x,r.x+r.w])if(Math.random()<.7)paintOff(g,x+rnd(-4,4),y+rnd(-4,4),st2*rnd(.6,1.4));
   g.restore();f.dirty=true;
 }
 // bullet through plaster: paint flakes off wider, plaster is punched out with a dark doughy rim
+const BARE='#a29d93';
+function paintOff(g,x,y,r){
+  g.fillStyle='rgba(0,0,0,.18)';blobPath(g,x,y,r+1.5,.55);g.fill();               // lifted paint edge
+  g.fillStyle=BARE;blobPath(g,x,y,r,.55);g.fill();
+  for(let i=0;i<4;i++){const a=rnd(0,6.283),d=r*rnd(.9,1.4);g.fillStyle=BARE;blobPath(g,x+Math.cos(a)*d,y+Math.sin(a)*d,r*rnd(.12,.35),.5);g.fill();}
+  for(let i=0;i<r*r/6;i++){const v=rnd(-.12,.08);g.fillStyle=v>0?`rgba(255,255,255,${v})`:`rgba(0,0,0,${-v})`;const a=rnd(0,6.283),d=rnd(0,r);g.fillRect(x+Math.cos(a)*d,y+Math.sin(a)*d,rnd(1,2),rnd(1,2));}
+}
 function plasterShot(p,cal){
   for(const f of plasterFaces){
     const W=f.W,dpl=(W.alongX?p.z:p.x)-f.plane;if(Math.abs(dpl)>.06)continue;
     const u=W.alongX?p.x-W.x0:p.z-W.z0;if(u<-.1||u>W.len+.1||p.y<W.y0-.1||p.y>W.y0+W.h+.1)continue;
-    const [x,y]=pxOf(f,p),g=f.g,rh=Math.max(2.5,cal*PPM*rnd(1.6,2.4)),rp=rh*rnd(1.8,2.8);
+    const [x,y]=pxOf(f,p),g=f.g,rh=Math.max(2.5,cal*PPM*rnd(1.6,2.4)),rp=rh*rnd(2.2,3.2);
     g.save();g.globalCompositeOperation='source-atop';
-    g.fillStyle='#b9b6af';blobPath(g,x,y,rp,.5);g.fill();                      // bare plaster where the paint chipped
+    paintOff(g,x,y,rp);                                                        // paint flakes off around the hit
     g.fillStyle='rgba(70,66,60,.85)';blobPath(g,x,y,rh+2.2,.3);g.fill();       // thickness / torn rim
     g.globalCompositeOperation='destination-out';blobPath(g,x,y,rh,.35);g.fill();
     g.restore();f.dirty=true;

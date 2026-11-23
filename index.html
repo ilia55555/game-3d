@@ -159,8 +159,8 @@ const hemi=new THREE.HemisphereLight(0xcfe0ff, 0x5a4a32, 0.55); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffd2a0, 4.2);
 sun.position.set(-70, 26, 50); // low angle
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048,2048);
-const sc = sun.shadow.camera; sc.left=-55; sc.right=55; sc.top=55; sc.bottom=-55; sc.near=1; sc.far=200;
+sun.shadow.mapSize.set(4096,4096);
+const sc = sun.shadow.camera; sc.left=-90; sc.right=90; sc.top=90; sc.bottom=-90; sc.near=1; sc.far=260;
 sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.03;
 scene.add(sun); scene.add(sun.target);
 
@@ -250,8 +250,8 @@ const composer=new EffectComposer(renderer);
 composer.setPixelRatio(Math.min(devicePixelRatio,1.5)); composer.setSize(innerWidth,innerHeight);
 composer.addPass(new RenderPass(scene,camera));
 const gtao=new GTAOPass(scene,camera,innerWidth,innerHeight);
-gtao.blendIntensity=.85; gtao.updateGtaoMaterial({radius:.7,distanceExponent:1.5,thickness:1.2,scale:1.1,samples:8,distanceFallOff:1,screenSpaceRadius:false});
-gtao.updatePdMaterial({lumaPhi:10,depthPhi:2,normalPhi:3,radius:6,radiusExponent:1,rings:2,samples:8});
+gtao.blendIntensity=.85; gtao.updateGtaoMaterial({radius:.7,distanceExponent:1.5,thickness:1.2,scale:1.1,samples:12,distanceFallOff:1,screenSpaceRadius:false});
+gtao.updatePdMaterial({lumaPhi:10,depthPhi:2,normalPhi:3,radius:6,radiusExponent:1,rings:2,samples:12});
 composer.addPass(gtao);
 // viewmodel (weapon, hands, arms) lives on layer 1 and is drawn after the world with a cleared depth buffer → it never pokes through walls
 const vmCam=new THREE.PerspectiveCamera(); vmCam.layers.set(1); vmCam.matrixWorldAutoUpdate=false;
@@ -260,7 +260,7 @@ function drawVM(r){const ac=r.autoClear,su=r.shadowMap.autoUpdate;r.autoClear=fa
 const vmPass=new RenderPass(scene,vmCam); vmPass.render=(r,w,read)=>{r.setRenderTarget(read);drawVM(r);}; composer.addPass(vmPass);
 const fxHide=[];  // particles etc. are hidden while GTAO renders its depth/normal pass
 {const r=gtao.render.bind(gtao);gtao.render=(...a)=>{const vis=fxHide.map(o=>o.visible);fxHide.forEach(o=>o.visible=false);r(...a);fxHide.forEach((o,i)=>o.visible=vis[i]);};}
-const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth/2,innerHeight/2),.32,.55,.92); composer.addPass(bloom);
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.32,.55,.92); composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const grade=new ShaderPass({uniforms:{tDiffuse:{value:null},uTime:{value:0},uHurt:{value:0},uAds:{value:0},uNV:{value:0},uRes:{value:new THREE.Vector2(innerWidth,innerHeight)}},
   vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
@@ -283,16 +283,10 @@ composer.addPass(grade);
 const smaa=new SMAAPass(innerWidth*renderer.getPixelRatio(),innerHeight*renderer.getPixelRatio()); composer.addPass(smaa);
 let quality=SET.quality; // 0 low, 1 medium, 2 high
 function applyQuality(){gtao.enabled=quality>=2;bloom.enabled=quality>=1;smaa.enabled=quality>=1;grade.enabled=quality>=1;
-  renderer.shadowMap.type=quality>=2?THREE.PCFSoftShadowMap:THREE.PCFShadowMap;const ms=quality>=2?2048:quality>=1?1536:1024;sun.shadow.mapSize.set(ms,ms);
+  renderer.shadowMap.type=quality>=1?THREE.PCFSoftShadowMap:THREE.PCFShadowMap;sun.shadow.mapSize.set(quality>=2?4096:2048,quality>=2?4096:2048);
   if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}}
 applyQuality();
-// dynamic resolution: lower pixel ratio when frame time is high, raise it back when there is headroom
-const PR_MAX=Math.min(devicePixelRatio,1.5);let pr=PR_MAX,frAcc=0,frN=0,frLast=performance.now();
-function setPR(v){pr=v;renderer.setPixelRatio(v);composer.setPixelRatio(v);composer.setSize(innerWidth,innerHeight);}
-function adaptRes(){const n=performance.now(),d=n-frLast;frLast=n;if(d>250)return;frAcc+=d;frN++;if(frN<40)return;const avg=frAcc/frN;frAcc=frN=0;
-  if(avg>19&&pr>.6)setPR(Math.max(.6,pr-.15));else if(avg<14&&pr<PR_MAX)setPR(Math.min(PR_MAX,pr+.1));}
-renderer.shadowMap.autoUpdate=false;let shF=0;
-function renderFrame(){ adaptRes(); syncVmCam(); renderer.shadowMap.needsUpdate=(shF++&1)===0; /* sun shadows redrawn every other frame */ if(quality===0){renderer.setRenderTarget(null);renderer.render(scene,camera);drawVM(renderer);} else composer.render(); }
+function renderFrame(){ syncVmCam(); if(quality===0){renderer.setRenderTarget(null);renderer.render(scene,camera);drawVM(renderer);} else composer.render(); }
 addEventListener('resize',()=>{composer.setSize(innerWidth,innerHeight);grade.uniforms.uRes.value.set(innerWidth,innerHeight);});
 
 // night sky: deep gradient dome with procedural stars, and a moon
@@ -894,8 +888,7 @@ function wake(b,hard=false){
   pending.add(b); return false;
 }
 function removeActive(b){const i=active.indexOf(b);if(i>=0){active[i]=active[active.length-1];active.pop();}}
-function sleepBody(b){if(b.frag&&b.scale.x*b.scale.y*b.scale.z<.03){hideBlock(b);return;} // small rubble vanishes once it settles
-  b.state='sleep';b.v.set(0,0,0);b.w.set(0,0,0);removeActive(b);gridInsert(b);if(b.kids)for(const k of b.kids)gridInsert(k);}
+function sleepBody(b){b.state='sleep';b.v.set(0,0,0);b.w.set(0,0,0);removeActive(b);gridInsert(b);if(b.kids)for(const k of b.kids)gridInsert(k);}
 // wake whatever rests on (or hangs from) b
 function wakeAbove(b){
   const e=.07,bx=b.box;
@@ -1642,24 +1635,24 @@ function explode(pos,R){
   shockwave(pos,R,nearGround&&pos.y<1.5);
   // fireball
   spawnSprite({type:'fire',pos,vel:V(),life:.3,s0:3,s1:R*3,op:1,c0:new THREE.Color(1,1,.9)});
-  for(let i=0;i<18;i++){const dir=rdir();dir.y=Math.abs(dir.y)*.8+.15;
+  for(let i=0;i<40;i++){const dir=rdir();dir.y=Math.abs(dir.y)*.8+.15;
     spawnSprite({type:'fire',pos:pos.clone().addScaledVector(dir,rnd(0,1.2)),vel:dir.clone().multiplyScalar(rnd(3,11)),life:rnd(.5,1.3),s0:rnd(2,3.5),s1:rnd(4.5,7.5),op:1,drag:2.6,lift:3.5});}
   // smoke column: fire-lit at birth → sooty → sun-lit grey
-  for(let i=0;i<16;i++){const dir=rdir();const g=rnd(.07,.16),hgt=Math.random();
+  for(let i=0;i<38;i++){const dir=rdir();const g=rnd(.07,.16),hgt=Math.random();
     spawnSprite({type:'smoke',pos:pos.clone().addScaledVector(dir,rnd(0,1.5)).add(V(0,hgt*2,0)),vel:dir.multiplyScalar(rnd(1,5)).add(V(0,rnd(2,4.5)+hgt*2,0)),delay:rnd(.05,.6),life:rnd(6,11),
       s0:rnd(2.5,4),s1:rnd(9,17),op:.85,drag:.7,lift:.35,c0:new THREE.Color(.55,.28,.1),cm:new THREE.Color(g,g*.95,g*.9),c1:new THREE.Color(.58,.57,.55),fadeIn:.3});}
-  for(let i=0;i<110;i++){const dir=rdir();dir.y=Math.abs(dir.y)*1.2-.1;spark(pos,dir.multiplyScalar(rnd(8,34)),rnd(.4,1.8));}
+  for(let i=0;i<380;i++){const dir=rdir();dir.y=Math.abs(dir.y)*1.2-.1;spark(pos,dir.multiplyScalar(rnd(8,34)),rnd(.4,1.8));}
   if(nearGround){
-    for(let i=0;i<9;i++){const a=rnd(0,7),dir=V(Math.cos(a),0,Math.sin(a));
+    for(let i=0;i<22;i++){const a=rnd(0,7),dir=V(Math.cos(a),0,Math.sin(a));
       spawnSprite({type:'smoke',pos:pos.clone().add(V(0,.4,0)),vel:dir.multiplyScalar(rnd(10,18)).add(V(0,rnd(.3,1.5),0)),life:rnd(1.5,2.5),s0:1.5,s1:5,op:.6,drag:2.4,c0:new THREE.Color(.42,.36,.27),c1:new THREE.Color(.55,.5,.42),fadeIn:.05});}
-    for(let i=0;i<10;i++){const dir=rdir();dir.y=Math.abs(dir.y)+.3;
+    for(let i=0;i<24;i++){const dir=rdir();dir.y=Math.abs(dir.y)+.3;
       spawnChip('dirt',rnd(.1,.3),pos.clone().add(V(0,.3,0)),dir.multiplyScalar(rnd(6,18)),Math.random()<.2?rnd(.6,1.4):0);}
   }
   // pieces: shatter the core, fling everything else with physics
   // effect is local: only blocks within ~2R are touched, so distant structures (stairs, other buildings) are left alone
   const list=nearby(pos.x-R*2,pos.z-R*2,pos.x+R*2,pos.z+R*2)
     .map(b=>({b,dd:b.box.distanceToPoint(pos)})).filter(o=>o.b.alive&&o.dd<R*2).sort((a,b)=>a.dd-b.dd);
-  fragBudget=24;
+  fragBudget=70;
   // inside the fireball the closest blocks are vaporised outright (hidden under the flash) instead of simulated
   let vap=0;for(const o of list){if(o.dd>R*.85||vap>=45)break;if(o.b.geom[0]!=='q'){hideBlock(o.b);vap++;}}
   for(const {b,dd} of list){ if(!b.alive)continue; if(dd<R*1.2) for(const bd of b.bonds) bd.ok=false; else if(dd<R*1.6) for(const bd of b.bonds) if(Math.random()<.4) bd.ok=false; else bd.str*=.6; }

@@ -321,7 +321,7 @@ const rdir=()=>V(rnd(-1,1),rnd(-1,1),rnd(-1,1)).normalize();
 //   sleep  : came to rest; immovable again until something disturbs it
 // =====================================================================
 // one quarter of a hollow concrete block (face shell + half end web + half centre web), unit box space
-const CB_FF=.035/.2, CB_FW=.035/.6;
+const CB_FF=.035/.2, CB_FW=.035/.8;
 function cbqGeometry(ix,iz,fine){
   const ff=CB_FF,fw=CB_FW,sg=v=>fine?Math.max(1,Math.round(v*14)):1;
   const bx=[[1.02,ff,-ix*.01,iz*(.5-ff/2)],[fw,1-ff,ix*(.5-fw/2),-iz*ff/2],[fw/2,1-ff,-ix*(.5-fw/4),-iz*ff/2]];
@@ -483,7 +483,7 @@ function updatePlaster(){
 // hollow concrete block = 4 bonded quarters (front/back × left/right); each crumbles away on its own
 let cbN=0;
 function addCBlock(alongX,len,hh,t,x,y,z){
-  const id=++cbN,rot=alongX?null:[0,Math.PI/2,0];
+  const id=++cbN,rot=typeof alongX==='number'?[0,alongX,0]:alongX?null:[0,Math.PI/2,0];
   const q=new THREE.Quaternion();if(rot)q.setFromEuler(new THREE.Euler(...rot));
   const tint=rnd(.85,1.03);
   for(const ix of [-1,1])for(const iz of [-1,1]){
@@ -494,6 +494,7 @@ function addCBlock(alongX,len,hh,t,x,y,z){
 }
 // running-bond masonry wall along +x or +z, with openings and optional broken top
 function wall({x0,z0,x1,z1,y0,h,t,mat,L=1.2,bh=.5,open=[],top=null,ph=0}){
+  if(mat==='cblock') L=1.6;                                                   // larger concrete units: 25% fewer bodies and bonds
   const alongX=x1!==x0, len=alongX?x1-x0:z1-z0;
   CUR_WALL=mat==='cblock'?plasterWall(alongX,x0,z0,len,y0,h,t):null;
   const rows=Math.max(1,Math.round(h/bh)), rh=h/rows;
@@ -611,28 +612,29 @@ await loadStep('ساخت ساختمان، برج، کلبه و خرابه‌ها
 })();
 
 // ---------- stone tower (north): ring masonry + timber deck ----------
+CUR_WALL=null;
 const TOWER={start:blocks.length,end:0,c:null,fallen:false};
 (function(){
   const x=-6,z=-45,R=4,H=16,n=20,rh=.8,th=.8;
-  const L=2*(R-th/2)*Math.sin(Math.PI/n)-.02, door=Math.PI/2;           // doorway faces south (+z)
+  const L=2*R*Math.sin(Math.PI/n)+.03, door=Math.PI/2;                // sized at mid-wall so the outer joints stay tight           // doorway faces south (+z)
   for(let r=0;r<H/rh;r++) for(let s=0;s<n;s++){
     const a=(s+(r%2)*.5)/n*Math.PI*2; let da=Math.abs(a-door); da=Math.min(da,Math.PI*2-da);
     if(r<3&&da<.33) continue;                                            // door opening, 2.4 m high
     if(r===3&&da<.45){addBlock('cube','plank',L,rh-.004,th,x+Math.cos(a)*R,r*rh+rh/2,z+Math.sin(a)*R,[0,-a-Math.PI/2,0]);continue;} // timber lintel
-    addBlock('cube','sblock',L,rh,th,x+Math.cos(a)*R,r*rh+rh/2,z+Math.sin(a)*R,[0,-a-Math.PI/2,0]);
+    addCBlock(-a-Math.PI/2,L,rh-.003,th,x+Math.cos(a)*R,r*rh+rh/2,z+Math.sin(a)*R);
   }
   // interior spiral stair: central newel column + cantilevered stone treads, 16 treads per turn, 0.3 m risers
-  for(let k=0;k<20;k++) addBlock('cyl','sblock',1,.8-.004,1,x,k*.8+.4,z);
+  for(let k=0;k<20;k++){const nb=addBlock('cyl','concrete',1,.8-.004,1,x,k*.8+.4,z);nb.stair=true;}
   const NS=53, aStart=door+Math.PI*.15, step=Math.PI*2/16;
   const ang=i=>aStart+i*step, aEnd=ang(NS-1);
   for(let i=0;i<NS;i++){const a=ang(i),rc=.5+1.5;
-    addBlock('cube','sblock',3,.3,.72,x+Math.cos(a)*rc,i*.3+.15,z+Math.sin(a)*rc,[0,-a,0]);}
+    const tb=addBlock('cube','concrete',3,.3,.72,x+Math.cos(a)*rc,i*.3+.15,z+Math.sin(a)*rc,[0,-a,0]);tb.stair=true;}
   // timber deck on top with a stair opening over the last quarter-turn
   const inHole=(px,pz)=>{const r=Math.hypot(px,pz);if(r<.6)return false;let d=Math.atan2(pz,px)-aEnd;d=((d+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;return d>-1.9&&d<.35;};
   for(let i=-3;i<=3;i++)for(let k=-3;k<=3;k++){const px=i*1.02,pz=k*1.02;if(Math.hypot(px,pz)>3.35||inHole(px,pz))continue;addBlock('cube','plank',1.01,.2,1.01,x+px,H+.1,z+pz);}
   TOWER.spot=V(x+Math.cos(aEnd+Math.PI)*2.2,H+.21,z+Math.sin(aEnd+Math.PI)*2.2);
   for(let i=0;i<12;i++){const a=i/12*Math.PI*2;
-    addBlock('cube','sblock',1,1.2,.5,x+Math.cos(a)*4.2,H+.6,z+Math.sin(a)*4.2,[0,-a+Math.PI/2,0]);}
+    addCBlock(-a+Math.PI/2,1,1.2,.5,x+Math.cos(a)*4.2,H+.6,z+Math.sin(a)*4.2);}
 })();
 
 TOWER.end=blocks.length; TOWER.c=V(-6,0,-45);
@@ -1430,6 +1432,7 @@ function updateSparks(dt){
 const chips=[];const MAXCHIP=400;
 function removeChip(i){scene.remove(chips[i].m);chips.splice(i,1);}
 function spawnChip(mat,size,pos,vel,burn=0){
+  if(mat!=='brass'&&mat!=='blood') return;                                    // world materials leave no cube debris: dust/smoke only
   if(chips.length>=MAXCHIP){let i=chips.findIndex(d=>d.rest);removeChip(i<0?0:i);}
   const m=new THREE.Mesh(G.cube,M[mat]); m.scale.setScalar(size); m.position.copy(pos); m.quaternion.setFromEuler(new THREE.Euler(rnd(0,3),rnd(0,3),rnd(0,3)));
   m.castShadow=true; scene.add(m);
@@ -1594,7 +1597,7 @@ function detonate(c){const i=c4s.indexOf(c);if(i<0)return;c4s.splice(i,1);scene.
 function detonateAll(){if(!c4s.length)return;sfx.beep();[...c4s].forEach((c,i)=>timers.push({t:.25+i*.18,fn:()=>detonate(c)}));}
 let fragBudget=0;
 function shatter(b,pos){
-  if(b.geom[0]==='q'||b.stair||b.mat==='cblock'){cbCrumble(b);return;}
+  if(b.mat!=='leaf'){cbCrumble(b);return;}
   hideBlock(b);
   if(fragBudget>0&&fragPools[b.mat]&&b.geom==='cube'){fragBudget-=fracture(b,pos,rnd(10,20)).length;
     for(let k=0;k<2;k++)spawnChip(b.mat,rnd(.05,.14),b.pos.clone().add(rdir().multiplyScalar(.2)),rdir().multiplyScalar(rnd(8,18)).add(V(0,4,0)));return;}
@@ -2843,7 +2846,7 @@ function masonryHit(h,w,dir){
   if(!(m==='concrete'||m==='cblock'))for(let i=0;i<(cal>.08?3:1);i++)spawnChip(m,rnd(.03,.07)*(cal/.06),p,h.n.clone().multiplyScalar(rnd(2,5)).add(rdir().multiplyScalar(1.5)));
   if(b.state==='active'){b.v.addScaledVector(dir,(cal*30)/Math.max(.2,b.mass));}
   b.hp-=HP[m]*(BREACH[w.snd]||.1); tintBlock(b,.985);                          // takes many rounds to break a block
-  if(b.hp<=0&&(b.stair||m==='cblock'||m==='concrete')){cbCrumble(b);return;}
+  if(b.hp<=0){cbCrumble(b);return;}
   if(b.hp<=0){
     hideBlock(b); fracture(b,h.p.clone().addScaledVector(dir,-.5),rnd(1,3),3);
     spawnSprite({type:'smoke',pos:b.pos.clone(),vel:V(0,.5,0),life:2.2,s0:.8,s1:2.4,op:.6,c0:new THREE.Color(...dc),c1:new THREE.Color(...dc),fadeIn:.05});
@@ -2905,8 +2908,9 @@ function obbDist(b,p){
 }
 function cbCrumble(b){
   if(!b.alive)return;
-  const c=b.pos.clone(),dc=DUST.cblock;
+  const c=b.pos.clone(),dc=DUST[b.mat]||DUST.cblock;
   hideBlock(b);
+  if(b.mat==='rust'||b.mat==='dark')for(let i=0;i<6;i++)spark(c,rdir().multiplyScalar(rnd(2,5)),rnd(.1,.3));
   spawnSprite({type:'smoke',pos:c,vel:V(0,-.3,0),life:1.1,s0:.3,s1:1.1,op:.55,drag:2,c0:new THREE.Color(...dc),c1:new THREE.Color(...dc),fadeIn:.03});
 }
 function updateSolos(){

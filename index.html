@@ -454,6 +454,21 @@ function plasterShot(p,cal){
     spawnSprite({type:'smoke',pos:p.clone().addScaledVector(f.n,.05),vel:f.n.clone().multiplyScalar(.9),life:rnd(.8,1.4),s0:.12,s1:cal*14,op:.55,drag:2,c0:new THREE.Color(.93,.92,.9),c1:new THREE.Color(.97,.97,.96),fadeIn:.02});
   }
 }
+// a blast strips plaster and paint off every wall side it reaches, in a ragged patch that shrinks with distance from the wall
+function plasterBlast(pos,R){
+  for(const f of plasterFaces){
+    const W=f.W,dpl=Math.abs((W.alongX?pos.z:pos.x)-f.plane);if(dpl>R*.8)continue;
+    const u=W.alongX?pos.x-W.x0:pos.z-W.z0;if(u<-R||u>W.len+R||pos.y<W.y0-R||pos.y>W.y0+W.h+R)continue;
+    const rr=Math.sqrt(Math.max(0,(R*.8)**2-dpl*dpl))*PPM*rnd(.75,1);if(rr<3)continue;
+    const [x,y]=pxOf(f,pos),g=f.g;
+    g.save();g.globalCompositeOperation='source-atop';
+    for(let i=0;i<10;i++){const a=rnd(0,6.283),d=rr*rnd(.9,1.35);paintOff(g,x+Math.cos(a)*d,y+Math.sin(a)*d,rr*rnd(.12,.3));}
+    g.globalCompositeOperation='destination-out';
+    blobPath(g,x,y,rr,.3);g.fill();
+    for(let i=0;i<7;i++){const a=rnd(0,6.283);blobPath(g,x+Math.cos(a)*rr*.85,y+Math.sin(a)*rr*.85,rr*rnd(.2,.45),.45);g.fill();}
+    g.restore();f.dirty=true;
+  }
+}
 let plT=0;
 function updatePlaster(){
   if(++plT%5===0) for(const f of plasterFaces){
@@ -1609,6 +1624,7 @@ function checkTower(pos){
 }
 const MASONRY=new Set(['sblock','cblock','plank','roof','wood','stone']);
 function explode(pos,R){
+  plasterBlast(pos,R);
   const d=distTo(pos);
   sfx.explosion(pos);
   flashLight.position.copy(pos).y+=1.5; flashI=6000;

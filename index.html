@@ -605,7 +605,7 @@ TOWER.end=blocks.length; TOWER.c=V(-6,0,-45);
 })();
 
 // ---------- crane (east): lattice mast, lattice jib & counter-jib, caged access ladder ----------
-const LADDERS=[];
+const LADDERS=[];let CRANE=null;
 (function(){
   const x=38,z=-8,H=26,L=1.8,group=++groupN;
   const strut=(ax,ay,az,bx,by,bz,th=.07,mat='rust')=>{const a=V(ax,ay,az),b=V(bx,by,bz),d=b.clone().sub(a),len=d.length();
@@ -646,6 +646,8 @@ const LADDERS=[];
   for(let y=2.6;y<top;y+=1){kid('torus',.9,.9,.9,x,y,cz);
     if(y+1<top) for(const a of [.6,1.57,2.54]) kid('cube',.03,1,.03,x+Math.cos(a)*.45,y+.5,cz+Math.sin(a)*.45);}
   box(2.2,.9,.06,x,H+2.45,z-1.07,'rust',{group});                                       // guard rail on the far edge of the cab roof
+  CRANE={g:group,x,z,L,mem:blocks.filter(b=>b.group===group),fall:null};
+  CRANE.low=CRANE.mem.filter(b=>b.col&&!b.parent&&b.pos.y<4.5);
   LADDERS.push({x,zl,nz:-1,y0:0,y1:H+2.05,ref:mid,hw:.4,exit:V(x+.55,H+2.01,z+.6)});
 })();
 
@@ -1152,7 +1154,7 @@ function supportCheck(){
   }
   // a welded frame (crane, tree) that has lost its footing comes down as one body: every member is released at once
   const dropG=new Set();
-  for(const b of blocks) if(b.group&&b.alive&&!b.parent&&b.state!=='active'&&_cost[b.id]>=9999) dropG.add(b.group);
+  for(const b of blocks) if(b.group&&b.group!==CRANE.g&&b.alive&&!b.parent&&b.state!=='active'&&_cost[b.id]>=9999) dropG.add(b.group);
   if(dropG.size){if(!supportCheck.gm){supportCheck.gm=new Map();for(const b of blocks)if(b.group)(supportCheck.gm.get(b.group)??supportCheck.gm.set(b.group,[]).get(b.group)).push(b);}
     for(const g of dropG) for(const b of supportCheck.gm.get(g)||[]){
       if(!b.alive||b.parent||b.state==='active'||_cost[b.id]<9999) continue;
@@ -1203,7 +1205,33 @@ function fracture(b,from,speed,maxN=4){
 }
 
 let physAcc=0;
+// the crane is steel: once its foot is knocked out it topples as ONE rigid body about the edge of its base
+// (rod pivoting under gravity), and only breaks apart when it hits the ground
+function craneFall(dt){
+  const C=CRANE; if(!C) return;
+  if(!C.fall){
+    const bad=C.low.find(b=>!b.alive||b.state==='active'); if(!bad) return;
+    const d=V(bad.pos.x-C.x,0,bad.pos.z-C.z); if(d.lengthSq()<.01)d.set(rnd(-1,1),0,rnd(-1,1)); d.normalize();
+    const P=V(C.x+d.x*C.L/2,0,C.z+d.z*C.L/2), axis=V(d.z,0,-d.x);
+    const mem=C.mem.filter(b=>b.alive&&b.state!=='active');
+    for(const b of mem){b.c0=b.pos.clone().sub(P);b.q0=b.quat.clone();gridRemove(b);pending.delete(b);for(const bd of b.bonds)bd.ok=false;}
+    C.fall={P,axis,mem,th:.03,om:.05,Q:new THREE.Quaternion()};
+  }
+  const F=C.fall; if(F.done) return;
+  F.om+=dt*18*Math.sin(F.th)/(14*1.33); F.th+=F.om*dt;
+  F.Q.setFromAxisAngle(F.axis,F.th);
+  let low=99;
+  for(const b of F.mem){ if(!b.alive) continue;
+    b.pos.copy(b.c0).applyQuaternion(F.Q).add(F.P); b.quat.copy(F.Q).multiply(b.q0); updateFrame(b);
+    b.im.setMatrixAt(b.idx,_mx.compose(b.pos,b.quat,b.scale)); dirtyIM.add(b.im); if(b.box.min.y<low)low=b.box.min.y; }
+  if(F.th>.25&&(low<.05||F.th>1.55)){
+    F.done=true; const wv=F.axis.clone().multiplyScalar(F.om);
+    for(const b of F.mem){ if(!b.alive) continue; activate(b); b.v.crossVectors(wv,b.pos.clone().sub(F.P)); b.w.copy(wv); }
+    sfx.thud(F.P.clone().addScaledVector(F.axis.clone().cross(V(0,1,0)).negate(),12),1);
+  }
+}
 function physics(dt){
+  craneFall(dt);
   thudBudget=Math.min(6,thudBudget+dt*14);
   if(pending.size){
     if(active.length>=MAXA){let need=pending.size;for(let i=active.length-1;i>=0&&need>0;i--){const b=active[i];if(b.life>.3&&b.wasTouch&&b.v.lengthSq()<.1&&b.w.lengthSq()<.1&&b.sleepT>.1){sleepBody(b);need--;}}}

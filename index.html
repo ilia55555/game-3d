@@ -418,16 +418,19 @@ function plasterPiece(b){
 }
 // plaster comes off a lost block raggedly: some of it stays stuck to neighbours, some tears off beyond the block
 function plasterTear(f,r){
-  const g=f.g;g.clearRect(r.x-1,r.y-1,r.w+2,r.h+2);                           // everything over the lost block goes
+  const g=f.g,cx=r.x+r.w/2,cy=r.y+r.h/2;
   g.save();g.globalCompositeOperation='destination-out';
-  const st=PPM*.14;                                                            // ragged edge: tears a bit further here and there
-  for(let x=r.x;x<=r.x+r.w;x+=st)for(const y of [r.y,r.y+r.h])if(Math.random()<.6){blobPath(g,x+rnd(-3,3),y,st*rnd(.4,1.5),.5);g.fill();}
-  for(let y=r.y;y<=r.y+r.h;y+=st)for(const x of [r.x,r.x+r.w])if(Math.random()<.6){blobPath(g,x,y+rnd(-3,3),st*rnd(.4,1.5),.5);g.fill();}
+  // one soft, lumpy patch (no straight edges): a jittered super-ellipse around the lost block + a few torn lobes
+  g.beginPath();const n=36,ph=rnd(0,6);let k0=rnd(.85,1.15);
+  for(let i=0;i<=n;i++){const a=i/n*6.283,c=Math.cos(a),sn=Math.sin(a);
+    const e=Math.pow(Math.pow(Math.abs(c),4)+Math.pow(Math.abs(sn),4),-.25);       // squircle radius
+    k0=k0*.6+rnd(.78,1.22)*.4+Math.sin(a*3+ph)*.04;
+    const x=cx+c*e*r.w/2*k0,y=cy+sn*e*r.h/2*k0;i?g.lineTo(x,y):g.moveTo(x,y);}
+  g.closePath();g.fill();
+  for(let i=0;i<5;i++){const a=rnd(0,6.283);blobPath(g,cx+Math.cos(a)*r.w*.45,cy+Math.sin(a)*r.h*.45,Math.min(r.w,r.h)*rnd(.15,.35),.45);g.fill();}
   g.restore();
   g.save();g.globalCompositeOperation='source-atop';                          // paint peels back around the torn edge
-  const st2=PPM*.15;
-  for(let x=r.x;x<=r.x+r.w;x+=st2)for(const y of [r.y,r.y+r.h])if(Math.random()<.7)paintOff(g,x+rnd(-4,4),y+rnd(-4,4),st2*rnd(.6,1.4));
-  for(let y=r.y;y<=r.y+r.h;y+=st2)for(const x of [r.x,r.x+r.w])if(Math.random()<.7)paintOff(g,x+rnd(-4,4),y+rnd(-4,4),st2*rnd(.6,1.4));
+  for(let i=0;i<14;i++){const ang=rnd(0,6.283);paintOff(g,cx+Math.cos(ang)*r.w*rnd(.5,.62),cy+Math.sin(ang)*r.h*rnd(.5,.62),PPM*rnd(.06,.16));}
   g.restore();f.dirty=true;
 }
 // bullet through plaster: paint flakes off wider, plaster is punched out with a dark doughy rim
@@ -2899,7 +2902,7 @@ function cbHit(h,w,dir){
   for(const o of near){      // the crater can straddle two blocks: both get hurt
     if(!o.alive||o.geom[0]!=='q')continue;
     if(o!==b&&obbDist(o,h.p)>r)continue;
-    cbDent(o,h.p,dir,size*.9,Math.min(.004+cal*.12,.022));
+    cbDent(o,h.p,dir,size*.75,Math.min(.0015+cal*.045,.008));
     cbCrater(o,h.p,h.n,size);
     o.hp-=o===b?dmg:dmg*.6;
     if(o.hp<=0)dead.push(o);

@@ -374,6 +374,17 @@ function box(w,h,d,x,y,z,mat,{col=true,ry=0,rot=null,group=0,noSelf=false,hang=f
   for(let i=0;i<nx;i++)for(let j=0;j<ny;j++)for(let k=0;k<nz;k++)
     addBlock('cube',mat,cw,ch,cd,x-w/2+(i+.5)*cw,y-h/2+(j+.5)*ch,z-d/2+(k+.5)*cd,null,col,opt);
 }
+// ---------- cast-concrete stair flights: stepped one-piece runs, two halves that crack apart in the middle ----------
+function stairStep(sx,sy,sz,x,y,z,group){const b=addBlock('cube','concrete',sx,sy,sz,x,y,z,null,true,{group});b.stair=true;b.hp=260;return b;}
+// steps along +u (axis 'x' or 'z'); top of step i = yb+(i+1)*r; underside follows the slope (waist ~2.2 risers deep)
+function concreteFlight({x,z,axis,dirU,n,r,g,w,yb,floorY}){
+  const gA=++groupN,gB=++groupN;
+  for(let i=0;i<n;i++){
+    const top=yb+(i+1)*r,bot=Math.max(floorY,top-r*2.2),u=(i+.5)*g*dirU;
+    const px=axis==='x'?x+u:x,pz=axis==='z'?z+u:z;
+    stairStep(axis==='x'?g:w,top-bot,axis==='z'?g:w,px,(top+bot)/2,pz,i<n/2?gA:gB);
+  }
+}
 // ---------- plaster + thin paint coat over concrete-block walls (one canvas mask per wall side) ----------
 let PAINT='#cfccc5',CUR_WALL=null;
 const HOUSE_PAINTS=['#bfb39b','#b6aea2','#bfb18e','#b09a84','#a8ab9e','#bdb9b0','#b49f8a'];
@@ -413,16 +424,15 @@ function plasterPiece(b){
 }
 // plaster comes off a lost block raggedly: some of it stays stuck to neighbours, some tears off beyond the block
 function plasterTear(f,r){
-  const g=f.g;g.clearRect(r.x-1,r.y-1,r.w+2,r.h+2);                           // everything over the lost block goes
-  g.save();g.globalCompositeOperation='destination-out';
-  const st=PPM*.14;                                                            // ragged edge: tears a bit further here and there
-  for(let x=r.x;x<=r.x+r.w;x+=st)for(const y of [r.y,r.y+r.h])if(Math.random()<.6){blobPath(g,x+rnd(-3,3),y,st*rnd(.4,1.5),.5);g.fill();}
-  for(let y=r.y;y<=r.y+r.h;y+=st)for(const x of [r.x,r.x+r.w])if(Math.random()<.6){blobPath(g,x,y+rnd(-3,3),st*rnd(.4,1.5),.5);g.fill();}
+  const g=f.g,cx=r.x+r.w/2,cy=r.y+r.h/2;
+  g.clearRect(r.x-1,r.y-1,r.w+2,r.h+2);                                       // nothing may stay over a lost block
+  g.save();g.globalCompositeOperation='destination-out';                       // ragged, lumpy tear beyond its outline
+  const st=4;
+  for(let x=r.x;x<=r.x+r.w;x+=st)for(const y of [r.y,r.y+r.h]){blobPath(g,x+rnd(-2,2),y,rnd(1,1)*PPM*(Math.random()<.25?rnd(.08,.2):rnd(.02,.07)),.5);g.fill();}
+  for(let y=r.y;y<=r.y+r.h;y+=st)for(const x of [r.x,r.x+r.w]){blobPath(g,x,y+rnd(-2,2),PPM*(Math.random()<.25?rnd(.08,.2):rnd(.02,.07)),.5);g.fill();}
   g.restore();
   g.save();g.globalCompositeOperation='source-atop';                          // paint peels back around the torn edge
-  const st2=PPM*.15;
-  for(let x=r.x;x<=r.x+r.w;x+=st2)for(const y of [r.y,r.y+r.h])if(Math.random()<.7)paintOff(g,x+rnd(-4,4),y+rnd(-4,4),st2*rnd(.6,1.4));
-  for(let y=r.y;y<=r.y+r.h;y+=st2)for(const x of [r.x,r.x+r.w])if(Math.random()<.7)paintOff(g,x+rnd(-4,4),y+rnd(-4,4),st2*rnd(.6,1.4));
+  for(let i=0;i<14;i++){const ang=rnd(0,6.283);paintOff(g,cx+Math.cos(ang)*r.w*rnd(.5,.62),cy+Math.sin(ang)*r.h*rnd(.5,.62),PPM*rnd(.06,.16));}
   g.restore();f.dirty=true;
 }
 // bullet through plaster: paint flakes off wider, plaster is punched out with a dark doughy rim
@@ -444,6 +454,21 @@ function plasterShot(p,cal){
     g.globalCompositeOperation='destination-out';blobPath(g,x,y,rh,.35);g.fill();
     g.restore();f.dirty=true;
     spawnSprite({type:'smoke',pos:p.clone().addScaledVector(f.n,.05),vel:f.n.clone().multiplyScalar(.9),life:rnd(.8,1.4),s0:.12,s1:cal*14,op:.55,drag:2,c0:new THREE.Color(.93,.92,.9),c1:new THREE.Color(.97,.97,.96),fadeIn:.02});
+  }
+}
+// a blast strips plaster and paint off every wall side it reaches, in a ragged patch that shrinks with distance from the wall
+function plasterBlast(pos,R){
+  for(const f of plasterFaces){
+    const W=f.W,dpl=Math.abs((W.alongX?pos.z:pos.x)-f.plane);if(dpl>R*.8)continue;
+    const u=W.alongX?pos.x-W.x0:pos.z-W.z0;if(u<-R||u>W.len+R||pos.y<W.y0-R||pos.y>W.y0+W.h+R)continue;
+    const rr=Math.sqrt(Math.max(0,(R*.8)**2-dpl*dpl))*PPM*rnd(.75,1);if(rr<3)continue;
+    const [x,y]=pxOf(f,pos),g=f.g;
+    g.save();g.globalCompositeOperation='source-atop';
+    for(let i=0;i<10;i++){const a=rnd(0,6.283),d=rr*rnd(.9,1.35);paintOff(g,x+Math.cos(a)*d,y+Math.sin(a)*d,rr*rnd(.12,.3));}
+    g.globalCompositeOperation='destination-out';
+    blobPath(g,x,y,rr,.3);g.fill();
+    for(let i=0;i<7;i++){const a=rnd(0,6.283);blobPath(g,x+Math.cos(a)*rr*.85,y+Math.sin(a)*rr*.85,rr*rnd(.2,.45),.45);g.fill();}
+    g.restore();f.dirty=true;
   }
 }
 let plT=0;
@@ -554,7 +579,7 @@ await loadStep('ساخت ساختمان، برج، کلبه و خرابه‌ها
   for(let k=0;k<rows;k++){
     const zc=-6.2+(k+.5)*rw;
     for(const [a,b] of [[-8.2,-3],[-3,1],[1,5],[5,8.2]]){
-      if(a<-8&&zc>-5.7&&zc<-2){addBlock('cube','plank',.5,.1,rw-.005,-7.95,H+.25,zc);continue;}
+      if(a<-8&&zc>-5.7&&zc<-2){addBlock('cube','plank',2.6-.005,.1,rw-.005,-4.3,H+.25,zc);continue;}   // opening only over the upper stair
       addBlock('cube','plank',b-a-.005,.1,rw-.005,(a+b)/2,H+.25,zc);
     }
   }
@@ -567,7 +592,21 @@ await loadStep('ساخت ساختمان، برج، کلبه و خرابه‌ها
   for(const z of [-2,1,4]) addBlock('cube','plank',16.4,.2,.2,0,T2+.1,z);
   for(let x=-7.55;x<1.8;x+=.5) for(const [a,b] of [[-2.1,1],[1,4.1]]) addBlock('cube','plank',.495,.1,b-a-.005,x,T2+.25,(a+b)/2);
   // stairs (solid stepped blocks)
-  for(let i=0;i<12;i++){const h=.3+i*.29; addBlock('cube',M_,4.5,h,.338,-5.4,h/2,-5.4+i*.34);}
+  // trimmer beam and timber guard rail round the stair opening (x -8.2..-5.6, z -5.7..-2)
+  addBlock('cube','plank',.2,.2,3.9,-5.5,H+.1,-3.85);
+  {const yf=H+.3;
+   for(let z=-5.6;z<=-2;z+=.9) addBlock('cube','wood',.08,1,.08,-5.55,yf+.5,Math.min(z,-2.05));
+   addBlock('cube','wood',.08,1,.08,-5.55,yf+.5,-2.05);
+   addBlock('cube','wood',.07,.07,3.7,-5.55,yf+1.02,-3.85,null,false);
+   addBlock('cube','wood',.06,.06,3.7,-5.55,yf+.55,-3.85,null,false);
+   addBlock('cube','wood',.08,1,.08,-6.35,yf+.5,-2.05);
+   addBlock('cube','wood',.8,.07,.07,-5.95,yf+1.02,-2.05,null,false);
+   addBlock('cube','wood',.8,.06,.06,-5.95,yf+.55,-2.05,null,false);}
+  // L-shaped cast stair inside the floor opening: flight along the back wall, corner landing, flight along the west wall
+  {const r=(H+.3)/18,g=.3,yl=9*r;
+   concreteFlight({x:-4.0,z:-5.1,axis:'x',dirU:-1,n:8,r,g,w:1.4,yb:0,floorY:0});
+   {const gl=++groupN;stairStep(1.4,.25,1.4,-7.1,yl-.125,-5.1,gl);}
+   concreteFlight({x:-7.1,z:-4.4,axis:'z',dirU:1,n:8,r,g,w:1.4,yb:yl,floorY:yl-.25});}
   for(let i=0;i<14;i++) addBlock('cube',M_,rnd(.3,1),rnd(.2,.6),rnd(.3,1),rnd(-3,7),.15,rnd(-5,5),[0,rnd(.1,3),0],false);
 })();
 
@@ -721,15 +760,10 @@ function house(cx,cz,W,D,nF,dir){
       // open treads on steel stringers, 0.1 m well between the flights, handrails and a guard rail round the stairwell
       const FF=H+FT,r=FF/20,g=.28,LD=1.2,fw=1.1,sg=f%2===1?-1:1,xa=f%2===1?cx+W/2:xL;
       const X=v=>xa+sg*(.2+v), Z=u=>zb+dir*(.2+u), c1=X(fw/2), c2=X(fw+.1+fw/2);
-      addBlock('cube','plank',2*fw+.1,.12,LD,(X(0)+X(2*fw+.1))/2,y0+FF/2-.06,Z(LD/2));               // half landing
-      for(const v of [.05,2*fw+.05]) addBlock('cube','rust',.08,FF/2-.12,.08,X(v),y0+(FF/2-.12)/2,Z(LD-.05),null,false);
-      for(let i=1;i<10;i++){                                                                          // flight 1 rises toward the back, flight 2 toward the front
-        addBlock('cube','plank',fw,.05,g+.02,c1,y0+i*r-.025,Z(LD+(9-i)*g+g/2));
-        addBlock('cube','plank',fw,.05,g+.02,c2,y0+FF/2+i*r-.025,Z(LD+(i-1)*g+g/2));
-      }
+      {const gl=++groupN;stairStep(2*fw+.1,.22,LD,(X(0)+X(2*fw+.1))/2,y0+FF/2-.11,Z(LD/2),gl);}               // cast landing on the back wall
+      concreteFlight({x:c1,z:Z(LD+9*g),axis:'z',dirU:-dir,n:9,r,g,w:fw,yb:y0,floorY:y0});           // flight 1 up along the side wall to the landing
+      concreteFlight({x:c2,z:Z(LD),axis:'z',dirU:dir,n:9,r,g,w:fw,yb:y0+FF/2,floorY:y0+FF/2-.22});   // flight 2 from the landing to the floor above
       const L1=LD+9*g;
-      for(const v of [0,fw,fw+.1,2*fw+.1]){const up2=v>fw+.05;                                       // stringers
-        seg(X(v+(v<.5||v>2?(v<.5?.04:-.04):(v<1.12?-.04:.04))),y0+(up2?FF/2:0)-.12,Z(up2?LD:L1),X(v+(v<.5||v>2?(v<.5?.04:-.04):(v<1.12?-.04:.04))),y0+(up2?FF:FF/2)-.12,Z(up2?L1:LD),.07,'rust',false);}
       for(const [v,a0,a1] of [[fw+.05,0,FF/2],[fw+.05,FF/2,FF]]){                                    // handrail on the well side of each flight
         const fl=a0>0;seg(X(v),y0+a0+.9,Z(fl?LD:L1),X(v),y0+a1+.9,Z(fl?L1:LD),.05,'rust',false);
         for(let k=0;k<=3;k++){const u=LD+k*3*g,yy=fl?y0+a0+(k*3)*r:y0+a1-(k*3)*r;addBlock('cube','rust',.04,.9,.04,X(v),yy+.45,Z(u),null,false);}}
@@ -1057,6 +1091,7 @@ const BOND_STR={cblock:55,sblock:65,stone:65,plank:26,wood:26,roof:20,rust:2500,
 const BMAT=new Set(['cblock','sblock','stone','plank','wood','roof']);
 function bondable(a,b){
   if(!a.col||!b.col||a.parent||b.parent||a.noSelf||b.noSelf||a.frag||b.frag) return false;
+  if(a.stair||b.stair){const o=a.stair?b:a;return o.stair||BMAT.has(o.mat);}
   if(a.group||b.group) return a.group===b.group;
   return BMAT.has(a.mat)&&BMAT.has(b.mat);
 }
@@ -1070,7 +1105,7 @@ function makeBond(a,b){
   const pts=[c.clone().add(u).add(v),c.clone().sub(u).add(v),c.clone().sub(v)];
   const area=4*Math.max(.02,ax[0][1]-e)*Math.max(.02,ax[1][1]-e);
   const same=a.group&&a.group===b.group, str=(same?Math.max:Math.min)(BOND_STR[a.mat]??50,BOND_STR[b.mat]??50)*(same?1:Math.max(.35,Math.min(2.5,area/.25)));
-  const str2=(a.cb&&a.cb===b.cb)?str*6:str;
+  const str2=(a.cb&&a.cb===b.cb)?str*6:((a.stair||b.stair)&&!same)?45:str;
   const bd={a,b,la:[],lb:[],str:str2,ok:true,st:0,n:pts.length,rA:pts.map(()=>V()),rB:pts.map(()=>V()),err:pts.map(()=>V()),acc:pts.map(()=>V()),k:pts.map(()=>[0,0,0]),dyn:false,A:null,B:null};
   _iqa.copy(a.quat).invert(); for(const p of pts) bd.la.push(p.clone().sub(a.pos).applyQuaternion(_iqa));
   _iqa.copy(b.quat).invert(); for(const p of pts) bd.lb.push(p.clone().sub(b.pos).applyQuaternion(_iqa));
@@ -1559,7 +1594,7 @@ function detonate(c){const i=c4s.indexOf(c);if(i<0)return;c4s.splice(i,1);scene.
 function detonateAll(){if(!c4s.length)return;sfx.beep();[...c4s].forEach((c,i)=>timers.push({t:.25+i*.18,fn:()=>detonate(c)}));}
 let fragBudget=0;
 function shatter(b,pos){
-  if(b.geom[0]==='q'){cbCrumble(b);return;}
+  if(b.geom[0]==='q'||b.stair||b.mat==='cblock'){cbCrumble(b);return;}
   hideBlock(b);
   if(fragBudget>0&&fragPools[b.mat]&&b.geom==='cube'){fragBudget-=fracture(b,pos,rnd(10,20)).length;
     for(let k=0;k<2;k++)spawnChip(b.mat,rnd(.05,.14),b.pos.clone().add(rdir().multiplyScalar(.2)),rdir().multiplyScalar(rnd(8,18)).add(V(0,4,0)));return;}
@@ -1597,6 +1632,7 @@ function checkTower(pos){
 }
 const MASONRY=new Set(['sblock','cblock','plank','roof','wood','stone']);
 function explode(pos,R){
+  plasterBlast(pos,R);
   const d=distTo(pos);
   sfx.explosion(pos);
   flashLight.position.copy(pos).y+=1.5; flashI=6000;
@@ -1632,7 +1668,7 @@ function explode(pos,R){
     if(!b.alive) continue;
     if(dd>R*1.7) continue;
     tintBlock(b,.35+.65*dd/(R*1.8));
-    if(dd<R*.32*rnd(.7,1.3)||(b.mat==='leaf'&&dd<R*.8)){shatter(b,pos);continue;}
+    if(dd<R*.32*rnd(.7,1.3)||(b.mat==='leaf'&&dd<R*.8)||((b.geom[0]==='q'||b.stair)&&dd<R*rnd(.8,1.05))){shatter(b,pos);continue;}
     if(dd<R*1.7){
       if(!wake(b,true)){if(dd<R)shatter(b,pos);continue;}
       const f=Math.pow(1-dd/(R*1.7),1.2);
@@ -2796,7 +2832,6 @@ function traceBullet(o,d,w,dmg,muzzleW,showTracer){
 function groundHit(h){
   const p=h.p.clone().addScaledVector(h.n,.02);
   spawnSprite({type:'smoke',pos:p,vel:V(0,1,0),life:.8,s0:.3,s1:1.1,op:.6,c0:new THREE.Color(.4,.34,.25),c1:new THREE.Color(.5,.45,.38),fadeIn:.02});
-  for(let i=0;i<2;i++)spawnChip('dirt',.04,p,h.n.clone().multiplyScalar(rnd(2,4)).add(rdir().multiplyScalar(1.5)));
   addDecal(h.p,h.n,rnd(.07,.1),'hole',null,40); sfx.impact('dirt',p);
 }
 function masonryHit(h,w,dir){
@@ -2805,9 +2840,10 @@ function masonryHit(h,w,dir){
   for(let i=0;i<(cal>.08?8:4);i++)spark(p,h.n.clone().multiplyScalar(rnd(2,5)).add(rdir().multiplyScalar(2)),rnd(.1,.25));
   const dc=DUST[m]||[.5,.5,.5];
   spawnSprite({type:'smoke',pos:p,vel:h.n.clone().multiplyScalar(1.2),life:rnd(.7,1.3),s0:.2,s1:cal*14,op:.7,drag:2,c0:new THREE.Color(...dc),c1:new THREE.Color(...dc).multiplyScalar(1.15),fadeIn:.02});
-  for(let i=0;i<(cal>.08?3:1);i++)spawnChip(m==='concrete'?'cblock':m,rnd(.03,.07)*(cal/.06),p,h.n.clone().multiplyScalar(rnd(2,5)).add(rdir().multiplyScalar(1.5)));
+  if(!(m==='concrete'||m==='cblock'))for(let i=0;i<(cal>.08?3:1);i++)spawnChip(m,rnd(.03,.07)*(cal/.06),p,h.n.clone().multiplyScalar(rnd(2,5)).add(rdir().multiplyScalar(1.5)));
   if(b.state==='active'){b.v.addScaledVector(dir,(cal*30)/Math.max(.2,b.mass));}
   b.hp-=HP[m]*(BREACH[w.snd]||.1); tintBlock(b,.985);                          // takes many rounds to break a block
+  if(b.hp<=0&&(b.stair||m==='cblock'||m==='concrete')){cbCrumble(b);return;}
   if(b.hp<=0){
     hideBlock(b); fracture(b,h.p.clone().addScaledVector(dir,-.5),rnd(1,3),3);
     spawnSprite({type:'smoke',pos:b.pos.clone(),vel:V(0,.5,0),life:2.2,s0:.8,s1:2.4,op:.6,c0:new THREE.Color(...dc),c1:new THREE.Color(...dc),fadeIn:.05});
@@ -2891,7 +2927,7 @@ function cbHit(h,w,dir){
   for(const o of near){      // the crater can straddle two blocks: both get hurt
     if(!o.alive||o.geom[0]!=='q')continue;
     if(o!==b&&obbDist(o,h.p)>r)continue;
-    cbDent(o,h.p,dir,size*.9,Math.min(.004+cal*.12,.022));
+    cbDent(o,h.p,dir,size*.75,Math.min(.0015+cal*.045,.008));
     cbCrater(o,h.p,h.n,size);
     o.hp-=o===b?dmg:dmg*.6;
     if(o.hp<=0)dead.push(o);

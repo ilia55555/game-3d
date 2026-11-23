@@ -533,27 +533,22 @@ const LADDERS=[];
       for(const s of [-1,1]){strut(xi,yb,z+s*w,xi+1,yt,z);strut(xi+1,yt,z,Math.min(x1,xi+2),yb,z+s*w);}
     }
   };
-  truss(x-26,x+2); truss(x+2,x+11);
+  truss(x-26,x-1.1); truss(x+1.1,x+11);                                     // cab roof left clear as the landing
   box(2.5,2,1.6,x+9,H+1,z,'concrete',{group});                                               // counterweight hangs under the counter-jib
-  box(.4,4,.4,x,H+4.8,z,'rust',{group});                                                     // tower head
+  box(.4,4.8,.4,x,H+4.4,z,'rust',{group});                                                     // tower head
   strut(x,H+6.7,z,x-18,yt,z,.04,'dark'); strut(x,H+6.7,z,x-8,yt,z,.04,'dark'); strut(x,H+6.7,z,x+10,yt,z,.04,'dark');   // pendant ropes
   box(.05,16,.05,x-20,H+2-8,z,'dark',{group,hang:true});
   box(2.5,1.2,1.5,x-20,H-14.6,z,'wood',{group,hang:true});
   // access ladder on the +z face with a safety cage of hoops and bars
-  const zl=z+L/2+.22, cz=zl+.42, top=H+1.1, crane=blocks.filter(b=>b.group===group&&b.col);
+  const zl=z+L/2+.22, cz=zl+.42, top=H+2.2, crane=blocks.filter(b=>b.group===group&&b.col);
   const host=p=>{let best=null,bd=1e9;for(const b of crane){const d=b.pos.distanceToSquared(p);if(d<bd){bd=d;best=b;}}return best;};
   const kid=(geom,sx,sy,sz,px,py,pz,rot)=>addBlock(geom,'rust',sx,sy,sz,px,py,pz,rot,false,{group,noSelf:true,parent:host(V(px,py,pz))});
   for(let y=1.2;y<top;y+=1){const h=Math.min(1,top-y);for(const s of [-1,1])kid('cube',.045,h-.01,.045,x+s*.22,y+h/2,zl);}
   let mid=null; for(let y=1.45;y<top;y+=.3){const r=kid('cube',.44,.035,.035,x,y,zl);if(!mid&&y>H/2)mid=r;}
   for(let y=2.6;y<top;y+=1){kid('torus',.9,.9,.9,x,y,cz);
     if(y+1<top) for(const a of [.6,1.57,2.54]) kid('cube',.03,1,.03,x+Math.cos(a)*.45,y+.5,cz+Math.sin(a)*.45);}
-  // landing deck at the foot of the cab: steel grating around a hatch the ladder rises through, with a guard rail
-  const dz0=z+L/2+.2,dz1=z+L/2+3.4,dy=H-.1,hw=2.6;
-  for(const s of [-1,1]) box(hw-.45,.12,dz1-dz0,x+s*(.45+hw)/2,dy,(dz0+dz1)/2,'rust',{group});
-  box(.9,.12,dz1-(zl+.95),x,dy,(zl+.95+dz1)/2,'rust',{group});
-  for(const s of [-1,1]) box(.06,1.1,dz1-dz0,x+s*(hw-.03),H+.55,(dz0+dz1)/2,'rust',{group});
-  box(2*hw,1.1,.06,x,H+.55,dz1-.03,'rust',{group});
-  LADDERS.push({x,zl,nz:-1,y0:0,y1:H+.05,ref:mid,hw:.4,exit:V(x,H+.01,zl+1.8)});
+  box(2.2,.9,.06,x,H+2.45,z-1.07,'rust',{group});                                       // guard rail on the far edge of the cab roof
+  LADDERS.push({x,zl,nz:-1,y0:0,y1:H+2.05,ref:mid,hw:.4,exit:V(x+.55,H+2.01,z+.6)});
 })();
 
 // ---------- ruins (south): broken stone-block walls, column drums ----------
@@ -2791,7 +2786,7 @@ function tick(){
   if(!onLadder&&ladderCool<=0&&!player.dead) for(const L of LADDERS){
     if(!L.ref||!L.ref.alive||L.ref.state==='active') continue;
     const dx=player.pos.x-L.x, dz=player.pos.z-L.zl;
-    if(L.exit&&locked&&keys.KeyS&&Math.abs(dx)<1.4&&dz>-.2&&dz<1.3&&Math.abs(player.pos.y-L.exit.y)<.3){onLadder=L;player.pos.set(L.x,L.y1-.3,L.zl+.46);ladderGun=weapon;if(weapon!==0&&weapon!==7)setWeapon(0);break;}
+    if(L.exit&&locked&&keys.KeyS&&Math.abs(dx)<.9&&dz>-.9&&dz<1.3&&Math.abs(player.pos.y-L.exit.y)<.3){onLadder=L;player.pos.set(L.x,L.y1-.3,L.zl+.46);ladderGun=weapon;if(weapon!==0&&weapon!==7)setWeapon(0);break;}
     if(Math.abs(dx)<.5&&dz>0&&dz<.95&&player.pos.y<L.y1-.3&&fwd.z*L.nz>.3&&locked&&keys.KeyW){onLadder=L;ladderGun=weapon;if(weapon!==0&&weapon!==7)setWeapon(0);break;}
   }
   if(onLadder){

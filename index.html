@@ -1215,29 +1215,29 @@ function fracture(b,from,speed,maxN=4){
 }
 
 let physAcc=0;
-// the crane is steel: once its foot is knocked out it topples as ONE rigid body about the edge of its base
-// (rod pivoting under gravity), and only breaks apart when it hits the ground
+// the crane is steel: once its foot is knocked out everything above drops straight down together under gravity
+// as one rigid body, and only breaks apart when it hits the ground
 function craneFall(dt){
   const C=CRANE; if(!C) return;
   if(!C.fall){
     const bad=C.low.find(b=>!b.alive||b.state==='active'); if(!bad) return;
     const d=V(bad.pos.x-C.x,0,bad.pos.z-C.z); if(d.lengthSq()<.01)d.set(rnd(-1,1),0,rnd(-1,1)); d.normalize();
     const P=V(C.x+d.x*C.L/2,0,C.z+d.z*C.L/2), axis=V(d.z,0,-d.x);
+    for(const b of C.mem) if(b.alive&&b.state!=='active'&&b.box.min.y<4.2) activate(b);   // the shattered foot collapses on its own
     const mem=C.mem.filter(b=>b.alive&&b.state!=='active');
     for(const b of mem){b.c0=b.pos.clone().sub(P);b.q0=b.quat.clone();gridRemove(b);pending.delete(b);for(const bd of b.bonds)bd.ok=false;}
-    C.fall={P,axis,mem,th:.03,om:.05,Q:new THREE.Quaternion()};
+    C.fall={P,mem,vy:0,dy:0};
   }
   const F=C.fall; if(F.done) return;
-  F.om+=dt*18*Math.sin(F.th)/(14*1.33); F.th+=F.om*dt;
-  F.Q.setFromAxisAngle(F.axis,F.th);
+  F.vy-=18*dt; F.dy+=F.vy*dt;
   let low=99;
   for(const b of F.mem){ if(!b.alive) continue;
-    b.pos.copy(b.c0).applyQuaternion(F.Q).add(F.P); b.quat.copy(F.Q).multiply(b.q0); updateFrame(b);
+    b.pos.copy(b.c0).add(F.P); b.pos.y+=F.dy; updateFrame(b);
     b.im.setMatrixAt(b.idx,_mx.compose(b.pos,b.quat,b.scale)); dirtyIM.add(b.im); if(b.box.min.y<low)low=b.box.min.y; }
-  if(F.th>.25&&(low<.05||F.th>1.55)){
-    F.done=true; const wv=F.axis.clone().multiplyScalar(F.om);
-    for(const b of F.mem){ if(!b.alive) continue; activate(b); b.v.crossVectors(wv,b.pos.clone().sub(F.P)); b.w.copy(wv); }
-    sfx.thud(F.P.clone().addScaledVector(F.axis.clone().cross(V(0,1,0)).negate(),12),1);
+  if(low<.05||F.dy<-30){
+    F.done=true;
+    for(const b of F.mem){ if(!b.alive) continue; activate(b); b.v.set(rnd(-.3,.3),F.vy,rnd(-.3,.3)); b.w.set(rnd(-.5,.5),rnd(-.5,.5),rnd(-.5,.5)); }
+    sfx.thud(F.P.clone(),1);
   }
 }
 function physics(dt){

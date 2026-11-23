@@ -1078,6 +1078,14 @@ function supportCheck(){
       }
     }
   }
+  // a welded frame (crane, tree) that has lost its footing comes down as one body: every member is released at once
+  const dropG=new Set();
+  for(const b of blocks) if(b.group&&b.alive&&!b.parent&&b.state!=='active'&&_cost[b.id]>=9999) dropG.add(b.group);
+  if(dropG.size){if(!supportCheck.gm){supportCheck.gm=new Map();for(const b of blocks)if(b.group)(supportCheck.gm.get(b.group)??supportCheck.gm.set(b.group,[]).get(b.group)).push(b);}
+    for(const g of dropG) for(const b of supportCheck.gm.get(g)||[]){
+      if(!b.alive||b.parent||b.state==='active'||_cost[b.id]<9999) continue;
+      for(const bd of b.bonds) if(bd.ok&&(bd.a.group!==g||bd.b.group!==g)) bd.ok=false;   // no gluing to the outside world
+      activate(b);}}
   for(const b of blocks){
     if(!b.alive||b.parent||b.state==='active'||_cost[b.id]<9999) continue;
     if(restingOnSomething(b)) continue;            // its direct support is only settling slowly: leave it

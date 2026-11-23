@@ -420,11 +420,11 @@ function plasterPiece(b){
 // plaster comes off a lost block raggedly: some of it stays stuck to neighbours, some tears off beyond the block
 function plasterTear(f,r){
   const g=f.g,cx=r.x+r.w/2,cy=r.y+r.h/2;
-  g.clearRect(r.x-1,r.y-1,r.w+2,r.h+2);                                       // nothing may stay over a lost block
-  g.save();g.globalCompositeOperation='destination-out';                       // ragged, lumpy tear beyond its outline
-  const st=4;
-  for(let x=r.x;x<=r.x+r.w;x+=st)for(const y of [r.y,r.y+r.h]){blobPath(g,x+rnd(-2,2),y,rnd(1,1)*PPM*(Math.random()<.25?rnd(.08,.2):rnd(.02,.07)),.5);g.fill();}
-  for(let y=r.y;y<=r.y+r.h;y+=st)for(const x of [r.x,r.x+r.w]){blobPath(g,x,y+rnd(-2,2),PPM*(Math.random()<.25?rnd(.08,.2):rnd(.02,.07)),.5);g.fill();}
+  g.save();g.globalCompositeOperation='destination-out';                       // organic hole: no straight edges anywhere
+  g.fillRect(r.x+r.w*.18,r.y+r.h*.18,r.w*.64,r.h*.64);
+  const st=3;
+  for(let x=r.x;x<=r.x+r.w;x+=st)for(const y of [r.y,r.y+r.h]){blobPath(g,x+rnd(-3,3),y+rnd(-3,3),PPM*(Math.random()<.35?rnd(.12,.28):rnd(.06,.14)),.6);g.fill();}
+  for(let y=r.y;y<=r.y+r.h;y+=st)for(const x of [r.x,r.x+r.w]){blobPath(g,x+rnd(-3,3),y+rnd(-3,3),PPM*(Math.random()<.35?rnd(.12,.28):rnd(.06,.14)),.6);g.fill();}
   g.restore();
   g.save();g.globalCompositeOperation='source-atop';                          // paint peels back around the torn edge
   for(let i=0;i<14;i++){const ang=rnd(0,6.283);paintOff(g,cx+Math.cos(ang)*r.w*rnd(.5,.62),cy+Math.sin(ang)*r.h*rnd(.5,.62),PPM*rnd(.06,.16));}
@@ -482,7 +482,7 @@ function updateTopples(dt){
     T.w+=dt*(1.5*GRAV/T.H)*Math.sin(T.th+.05);T.th=Math.min(Math.PI/2,T.th+T.w*dt);_tq.setFromAxisAngle(T.axis,T.th);
     for(const b of T.L){if(!b.alive)continue;b.pos.copy(b.rel).applyQuaternion(_tq).add(T.pivot);b.quat.copy(_tq).multiply(b.q0);updateFrame(b);
       if(!b.solo){b.im.setMatrixAt(b.idx,_mx.compose(b.pos,b.quat,b.scale));dirtyIM.add(b.im);}}
-    if(T.th>=Math.PI/2-.12||T.t>4){                                            // slams down: a dust cloud swallows it and it is gone
+    if(T.th>=1.05||T.t>2.5){                                            // slams down: a dust cloud swallows it and it is gone
       const len=T.L.length,far=T.pivot.clone().addScaledVector(T.dir,T.H*.5);
       for(let k=0;k<Math.min(10,2+len/25);k++){const b=T.L[(Math.random()*len)|0];
         spawnSprite({type:'smoke',pos:b.pos.clone().setY(.6),vel:V(rnd(-1,1),rnd(.3,1),rnd(-1,1)),life:rnd(4,7),s0:2.5,s1:rnd(6,9),op:.8,drag:.8,lift:.15,c0:new THREE.Color(.62,.6,.56),c1:new THREE.Color(.7,.68,.64),fadeIn:.08});}
@@ -1099,7 +1099,7 @@ function step(dt){
     const lv=active.length>MAXA*.8?.16:.03;
     b.vs=(b.vs??1)*.8+b.v.lengthSq()*.2; b.ws=(b.ws??1)*.8+b.w.lengthSq()*.2;   // smoothed motion energy
     if(b.vs<lv&&b.ws<.16) b.sleepT+=dt; else b.sleepT=0;
-    if(((b.sleepT>.35&&b.life>0)||(b.life>6&&sp<.5&&b.w.lengthSq()<2))&&b.touch) sleepBody(b);
+    if((((b.sleepT>.35&&b.life>0)||(b.life>3&&sp<1.5))&&b.touch)||b.life>8) sleepBody(b);   // fallen pieces freeze soon after landing
     b.wasTouch=b.touch; b.touch=false;
   }
 }

@@ -460,22 +460,26 @@ await loadStep('ساخت ساختمان، برج، کلبه و خرابه‌ها
 // ---------- stone tower (north): ring masonry + timber deck ----------
 const TOWER={start:blocks.length,end:0,c:null,fallen:false};
 (function(){
-  const x=-6,z=-45,R=4,H=16,N=56,n=20,rh=.8,th=.8;
-  const L=2*(R-th/2)*Math.sin(Math.PI/n)-.02;
+  const x=-6,z=-45,R=4,H=16,n=20,rh=.8,th=.8;
+  const L=2*(R-th/2)*Math.sin(Math.PI/n)-.02, door=Math.PI/2;           // doorway faces south (+z)
   for(let r=0;r<H/rh;r++) for(let s=0;s<n;s++){
-    const a=(s+(r%2)*.5)/n*Math.PI*2;
+    const a=(s+(r%2)*.5)/n*Math.PI*2; let da=Math.abs(a-door); da=Math.min(da,Math.PI*2-da);
+    if(r<3&&da<.33) continue;                                            // door opening, 2.4 m high
+    if(r===3&&da<.45){addBlock('cube','plank',L,rh-.004,th,x+Math.cos(a)*R,r*rh+rh/2,z+Math.sin(a)*R,[0,-a-Math.PI/2,0]);continue;} // timber lintel
     addBlock('cube','sblock',L,rh,th,x+Math.cos(a)*R,r*rh+rh/2,z+Math.sin(a)*R,[0,-a-Math.PI/2,0]);
   }
-  for(const zz of [-2.5,0,2.5]){const l=2*Math.sqrt(3.95*3.95-zz*zz); addBlock('cube','plank',l,.2,.25,x,H+.1,z+zz);}
-  for(let xx=-3.25;xx<=3.26;xx+=.5){const l=2*Math.min(2.75,Math.sqrt(3.5*3.5-xx*xx)); addBlock('cube','plank',.495,.1,l,x+xx,H+.25,z);}
-  const aEnd=((N-1)/N*Math.PI*2*1.6)%(Math.PI*2);
+  // interior spiral stair: central newel column + cantilevered stone treads, 16 treads per turn, 0.3 m risers
+  for(let k=0;k<20;k++) addBlock('cyl','sblock',1,.8-.004,1,x,k*.8+.4,z);
+  const NS=53, aStart=door+Math.PI*.15, step=Math.PI*2/16;
+  const ang=i=>aStart+i*step, aEnd=ang(NS-1);
+  for(let i=0;i<NS;i++){const a=ang(i),rc=.5+1.5;
+    addBlock('cube','sblock',3,.3,.72,x+Math.cos(a)*rc,i*.3+.15,z+Math.sin(a)*rc,[0,-a,0]);}
+  // timber deck on top with a stair opening over the last quarter-turn
+  const inHole=(px,pz)=>{const r=Math.hypot(px,pz);if(r<.6)return false;let d=Math.atan2(pz,px)-aEnd;d=((d+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;return d>-1.9&&d<.35;};
+  for(let i=-3;i<=3;i++)for(let k=-3;k<=3;k++){const px=i*1.02,pz=k*1.02;if(Math.hypot(px,pz)>3.35||inHole(px,pz))continue;addBlock('cube','plank',1.01,.2,1.01,x+px,H+.1,z+pz);}
+  TOWER.spot=V(x+Math.cos(aEnd+Math.PI)*2.2,H+.21,z+Math.sin(aEnd+Math.PI)*2.2);
   for(let i=0;i<12;i++){const a=i/12*Math.PI*2;
-    let da=Math.abs(a-aEnd); da=Math.min(da,Math.PI*2-da); if(da<.45) continue;
     addBlock('cube','sblock',1,1.2,.5,x+Math.cos(a)*4.2,H+.6,z+Math.sin(a)*4.2,[0,-a+Math.PI/2,0]);}
-  for(let i=0;i<N;i++){
-    const a=i/N*Math.PI*2*1.6, y=.2+i*(H/N);
-    addBlock('cube','sblock',1.8,.3,1.1,x+Math.cos(a)*5.35,y,z+Math.sin(a)*5.35,[0,-a+1e-4,0]);
-  }
 })();
 
 TOWER.end=blocks.length; TOWER.c=V(-6,0,-45);
@@ -573,7 +577,7 @@ function house(cx,cz,W,D,nF,dir){
   const H=3.2,t=.4,M_=(cx+cz)%2?'sblock':'cblock',FT=.3;
   const zf=cz+dir*D/2, zb=cz-dir*D/2, xL=cx-W/2;
   const nj=Math.ceil(W/4)+1, xs=[...Array(nj).keys()].map(k=>xL+k*W/(nj-1));
-  const stairW=2.2, holeZ0=Math.min(zb,zb+dir*4.4), holeZ1=Math.max(zb,zb+dir*4.4);
+  const holeZ0=Math.min(zb,zb+dir*3.6), holeZ1=Math.max(zb,zb+dir*3.6);
   for(let f=0;f<nF;f++){
     const y0=f*(H+FT), len=W+.4, nw=Math.max(1,Math.floor((W-2)/3.2)), wins=[];
     for(let k=0;k<nw;k++){const c=1.2+(k+.5)*(len-2.4)/nw;wins.push({a:c-.65,b:c+.65,y0:y0+1,y1:y0+2.4});}
@@ -589,9 +593,12 @@ function house(cx,cz,W,D,nF,dir){
     const rows=Math.round((D+.4)/.5),rw=(D+.4)/rows;
     for(let k=0;k<rows;k++){const zc=cz-D/2-.2+(k+.5)*rw;
       for(let j=0;j<nj-1;j++){const a=j?xs[j]:xL-.2,b=j===nj-2?cx+W/2+.2:xs[j+1];
-        if(!last&&j===0&&zc>holeZ0+.3&&zc<holeZ1&&Math.abs(zc-zb)>.3){addBlock('cube','plank',.5,.1,rw-.005,xL-.05,yt+.25,zc);continue;}
+        const sR=f%2===1; if(!last&&(sR?j===nj-2:j===0)&&zc>holeZ0+.3&&zc<holeZ1&&Math.abs(zc-zb)>.3){addBlock('cube','plank',.5,.1,rw-.005,sR?cx+W/2+.05:xL-.05,yt+.25,zc);continue;}
         addBlock('cube','plank',b-a-.005,.1,rw-.005,(a+b)/2,yt+.25,zc);}}
-    if(!last) for(let i=0;i<12;i++){const h=.3+i*.29;addBlock('cube',M_,stairW,h-.004,.336,xL+.2+stairW/2+.02,y0+h/2,zb+dir*(.2+.17+i*.34));}
+    if(!last){ const r=.25,fw=1.05,sg=f%2===1?-1:1,xa=f%2===1?cx+W/2:xL,x1=xa+sg*(.35+fw/2),x2=xa+sg*(.35+fw+.1+fw/2),zL=zb+dir*(.2+.6);
+      addBlock('cube',M_,2*fw+.1,1.75-.004,1.2,(x1+x2)/2,y0+.875,zL);                                   // half landing against the back wall
+      for(let i=0;i<6;i++){const h=(i+1)*r;addBlock('cube',M_,fw,h-.004,.3-.004,x1,y0+h/2,zb+dir*(1.4+.15+(5-i)*.3));}   // flight 1 up toward the back
+      for(let j=0;j<7;j++){const h=1.75+(j+1)*r;addBlock('cube',M_,fw,h-.004,.3-.004,x2,y0+h/2,zb+dir*(1.4+.15+j*.3));} } // flight 2 back to the front
     else wall({x0:xL-.2,z0:zf,x1:cx+W/2+.2,z1:zf,y0:yt+FT,h:.6,t,mat:M_,bh:.6});   // roof parapet
     houseSpots.push(V(cx+1.5,y0+(f?FT:0)+.01,cz+dir*1.2));
     if(last) houseSpots.push(V(cx+1,yt+FT+.01,cz));
@@ -1783,7 +1790,7 @@ const keys={},mb={};
 let locked=false,started=false,weapon=2,ads=0,fireCD=0,kick=0,draw=0,flashT=0,trig=0,trigHeld=false;
 let crouch=false,slideT=0,eyeH=1.6,lean=0,breath=4,punchP=0,punchY=0,timeScale=1,slowT=0;
 let reloadT=-1,reloadDur=0,boltT=-1,pumpT=-1,shellsToLoad=0,lastSwitch=0;
-let gasp=0,binoc=false,binZ=1,noiseLvl=0,lightLvl=1,zoomI={4:1,5:2},supFlash=false,onLadder=null,ladderCool=0,rungT=0;let kills=0,wave=0,waveClearT=-1,flashOn=false,nvOn=false,nvK=0,tuck=0,stepT=0,mode='day';const inertia=new THREE.Vector2();let landKick=0,wasGround=true;
+let ladderGun=null,gasp=0,binoc=false,binZ=1,noiseLvl=0,lightLvl=1,zoomI={4:1,5:2},supFlash=false,onLadder=null,ladderCool=0,rungT=0;let kills=0,wave=0,waveClearT=-1,flashOn=false,nvOn=false,nvK=0,tuck=0,stepT=0,mode='day';const inertia=new THREE.Vector2();let landKick=0,wasGround=true;
 const $=id=>document.getElementById(id);
 const startEl=$('start'),scopeEl=$('scope'),crossEl=$('cross'),flashEl=$('flash'),weapEl=$('weap'),hpEl=$('hpbar'),hitEl=$('hit'),feedEl=$('feed'),vigEl=$('vig'),bannerEl=$('banner'),deadEl=$('dead'),killsEl=$('kills');
 // ---------- menus: main / pause / settings / controls (Persian & English) ----------
@@ -1879,7 +1886,7 @@ addEventListener('mousemove',e=>{
   player.yaw-=e.movementX*sens; player.pitch-=e.movementY*sens; inertia.x+=e.movementX*.00025; inertia.y+=e.movementY*.00025;
   player.pitch=Math.max(-1.5,Math.min(1.5,player.pitch));
 });
-function setWeapon(i){binoc=false;if(i===weapon||i<0||i>7)return;weapon=i;draw=0;reloadT=-1;boltT=-1;pumpT=-1;shellsToLoad=0;sfx.click(.5);}
+function setWeapon(i){binoc=false;if(i===weapon||i<0||i>7)return;if(onLadder&&i!==0&&i!==7)return;weapon=i;draw=0;reloadT=-1;boltT=-1;pumpT=-1;shellsToLoad=0;sfx.click(.5);}
 function startReload(){
   const w=WEAPONS[weapon]; if(w.c4||reloadT>=0||w.ammo>=w.mag||w.reserve<=0) return;
   if(w.shell){shellsToLoad=Math.min(w.mag-w.ammo,w.reserve);reloadDur=w.reload*shellsToLoad+.5;}
@@ -1897,9 +1904,17 @@ function canStand(){const H=player.H;player.H=1.75;const ok=!hits(player.pos);pl
 
 // collision (shared by player & enemies)
 const pbox=new THREE.Box3();
+function obbXZ(b,minx,minz,maxx,maxz){
+  if(b.quat.w>.99999||Math.abs(b.ax[1].y)<.995) return true;          // axis-aligned or tumbled: AABB is fine
+  const cx=(minx+maxx)/2,cz=(minz+maxz)/2,hx=(maxx-minx)/2,hz=(maxz-minz)/2,a0=b.ax[0],a2=b.ax[2],dx=b.pos.x-cx,dz=b.pos.z-cz;
+  if(Math.abs(dx)>hx+b.h.x*Math.abs(a0.x)+b.h.z*Math.abs(a2.x)) return false;
+  if(Math.abs(dz)>hz+b.h.x*Math.abs(a0.z)+b.h.z*Math.abs(a2.z)) return false;
+  for(const [a,e] of [[a0,b.h.x],[a2,b.h.z]]){const l=Math.hypot(a.x,a.z)||1,ux=a.x/l,uz=a.z/l;if(Math.abs(dx*ux+dz*uz)>e+hx*Math.abs(ux)+hz*Math.abs(uz))return false;}
+  return true;
+}
 function hitsAt(p,R,H){
   pbox.min.set(p.x-R,p.y+.05,p.z-R); pbox.max.set(p.x+R,p.y+H,p.z+R);
-  for(const b of nearby(pbox.min.x,pbox.min.z,pbox.max.x,pbox.max.z)) if(b.alive&&b.col&&b.box.intersectsBox(pbox)) return b.box;
+  for(const b of nearby(pbox.min.x,pbox.min.z,pbox.max.x,pbox.max.z)) if(b.alive&&b.col&&b.box.intersectsBox(pbox)&&obbXZ(b,pbox.min.x,pbox.min.z,pbox.max.x,pbox.max.z)) return b.box;
   for(const c of staticColliders) if(c.intersectsBox(pbox)) return c;
   return null;
 }
@@ -1919,7 +1934,7 @@ function groundAt(p,R){
   let gy=0;
   for(const b of nearby(p.x-R,p.z-R,p.x+R,p.z+R)){
     if(!b.alive||!b.col) continue; const c=b.box;
-    if(p.x+R>c.min.x&&p.x-R<c.max.x&&p.z+R>c.min.z&&p.z-R<c.max.z&&c.max.y<=p.y+.6&&c.max.y>gy) gy=c.max.y;
+    if(p.x+R>c.min.x&&p.x-R<c.max.x&&p.z+R>c.min.z&&p.z-R<c.max.z&&c.max.y<=p.y+.6&&c.max.y>gy&&obbXZ(b,p.x-R,p.z-R,p.x+R,p.z+R)) gy=c.max.y;
   }
   return gy;
 }
@@ -2230,7 +2245,7 @@ function nextWave(){
   wave++; for(const w of WEAPONS) if(!w.c4) w.reserve=w.res;
   const n=8+2*(wave-1);
   let made=0;
-  for(const sp of [V(-6.2,16.32,-43.6),V(33,28.82,-8)]){ if(made>=2) break;
+  for(const sp of [TOWER.spot.clone(),V(33,28.82,-8)]){ if(made>=2) break;
     const fl=floorAt(sp.x,sp.z,sp.y+.2); if(fl>sp.y-1){sp.y=fl;spawnEnemy(sp,'sniper');made++;}}
   while(made<n){spawnEnemy(freeSpot(30),'rifle');made++;}
   banner(`${tr('wave')} ${wave}`,tr('onmap')(n));
@@ -2720,24 +2735,28 @@ function tick(){
     const k=player.onGround?12:2;
     player.vel.x+=(wish.x-player.vel.x)*Math.min(1,k*dt); player.vel.z+=(wish.z-player.vel.z)*Math.min(1,k*dt);
   }
-  // ladders: face the ladder and hold W to climb, S to descend, Space to jump off
-  ladderCool-=dt; onLadder=null;
-  if(ladderCool<=0&&!player.dead) for(const L of LADDERS){
+  // ladders: walk into one to grab it; W up, S down, Space lets go. The climber is locked to the rungs.
+  ladderCool-=dt;
+  if(!onLadder&&ladderCool<=0&&!player.dead) for(const L of LADDERS){
     if(!L.ref||!L.ref.alive||L.ref.state==='active') continue;
     const dx=player.pos.x-L.x, dz=player.pos.z-L.zl;
-    if(Math.abs(dx)<L.hw&&dz>0&&dz<.8&&player.pos.y>L.y0-.1&&player.pos.y<L.y1&&(fwd.z*L.nz>.25||player.pos.y>L.y0+.4)) {onLadder=L;break;}
+    if(Math.abs(dx)<.5&&dz>0&&dz<.95&&player.pos.y<L.y1-.3&&fwd.z*L.nz>.3&&locked&&keys.KeyW){onLadder=L;ladderGun=weapon;if(weapon!==0&&weapon!==7)setWeapon(0);break;}
   }
   if(onLadder){
-    const up=(locked&&keys.KeyW?1:0)-(locked&&keys.KeyS?1:0);
-    player.vel.y=up*2.6; player.vel.x*=.5; player.vel.z*=.5; crouch=false; slideT=0;
-    if(up&&player.onGround===false){rungT-=dt;if(rungT<=0){rungT=.32;sfx.impact('rust',player.pos.clone().add(V(0,1,0)));}}
-    if(keys.Space&&locked){ladderCool=.5;player.vel.set(0,3.5,0).add(V(0,0,-onLadder.nz*3));onLadder=null;}
+    const L=onLadder, up=(locked&&keys.KeyW?1:0)-(locked&&keys.KeyS?1:0);
+    player.pos.x+=(L.x-player.pos.x)*Math.min(1,dt*12); player.pos.z+=(L.zl+.46-player.pos.z)*Math.min(1,dt*12);
+    player.pos.y+=up*2.4*dt; player.vel.set(0,0,0); crouch=false; slideT=0; player.onGround=false;
+    if(up){rungT-=dt;if(rungT<=0){rungT=.3;sfx.impact('rust',player.pos.clone().add(V(0,1.2,0)));}}
+    const leave=()=>{onLadder=null;ladderCool=.6;if(ladderGun!=null&&ladderGun!==weapon)setWeapon(ladderGun);};
+    if(player.pos.y>=L.y1-.15&&up>0){player.pos.set(L.x,L.y1-.2+.02,L.zl-.75);leave();}            // step off onto the platform
+    else if(player.pos.y<=0&&up<0){player.pos.y=0;leave();}
+    else if(keys.Space&&locked){player.vel.set(0,2,0).add(V(0,0,-L.nz*3));leave();}
   }
   if(keys.Space&&player.onGround&&locked&&!player.dead&&!onLadder){ if(crouch&&canStand())crouch=false; if(!crouch){player.vel.y=6;player.onGround=false;slideT=0;} }
   player.H=crouch?1.15:1.75;
-  if(!onLadder) player.vel.y-=18*dt;
-  moveEnt(player,'x',player.vel.x*dt,player.R,player.H,player.onGround||!!onLadder); moveEnt(player,'z',player.vel.z*dt,player.R,player.H,player.onGround||!!onLadder);
-  const gy=groundAt(player.pos,player.R);
+  if(!onLadder) player.vel.y-=18*dt; else player.vel.y=0;
+  if(!onLadder){moveEnt(player,'x',player.vel.x*dt,player.R,player.H,player.onGround); moveEnt(player,'z',player.vel.z*dt,player.R,player.H,player.onGround);}
+  const gy=onLadder?-99:groundAt(player.pos,player.R);
   player.pos.y+=player.vel.y*dt;
   if(player.vel.y>0&&hits(player.pos)){player.pos.y-=player.vel.y*dt;player.vel.y=0;}
   const vyBefore=player.vel.y;
